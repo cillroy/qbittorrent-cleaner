@@ -10,6 +10,7 @@ import threading
 import time
 import ctypes
 import logging
+import sys
 from cleaner import Cleaner
 
 SERVICE_NAME = "QBCleanerService"
@@ -19,16 +20,20 @@ RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
 DEBUG_LOG = os.path.join(BASE_DIR, "tray-debug.log")
 
 # -------------------------
-# DEBUG LOGGING
+# DEBUG FLAG
 # -------------------------
 
-logging.basicConfig(
-    filename=DEBUG_LOG,
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+ENABLE_DEBUG = "debug" in sys.argv
 
-logging.info("Tray starting up")
+if ENABLE_DEBUG:
+    logging.basicConfig(
+        filename=DEBUG_LOG,
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(message)s"
+    )
+    logging.info("Debug logging enabled")
+else:
+    logging.basicConfig(level=logging.CRITICAL)
 
 # -------------------------
 # ELEVATION CHECK
@@ -36,11 +41,8 @@ logging.info("Tray starting up")
 
 def is_elevated():
     try:
-        elevated = ctypes.windll.shell32.IsUserAnAdmin() != 0
-        logging.debug(f"is_elevated() -> {elevated}")
-        return elevated
-    except Exception as e:
-        logging.error(f"Elevation check failed: {e}")
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except:
         return False
 
 # -------------------------
@@ -53,10 +55,17 @@ def make_icon(color):
     d.ellipse((6, 6, 58, 58), fill=color, outline="black", width=3)
     return img
 
-ICON_RUNNING = make_icon("green")
-ICON_STOPPED = make_icon("red")
-ICON_UNKNOWN = make_icon("yellow")
-ICON_NOT_ELEVATED = make_icon("blue")
+def fresh_icon(color):
+    # Force a new icon handle so Windows Explorer repaints
+    return make_icon(color)
+
+# Pre-generated colors
+COLOR_MAP = {
+    "Running": "green",
+    "Stopped": "red",
+    "Unknown": "yellow",
+    "Not Elevated": "blue"
+}
 
 # -------------------------
 # SERVICE STATUS
@@ -64,37 +73,29 @@ ICON_NOT_ELEVATED = make_icon("blue")
 
 def get_status():
     if not is_elevated():
-        logging.debug("Status: Not Elevated")
         return "Not Elevated"
 
     try:
         raw = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
-        logging.debug(f"Raw service status code: {raw}")
 
         if raw in (2, 4):
-            logging.debug("Interpreted status: Running")
             return "Running"
         elif raw == 1:
-            logging.debug("Interpreted status: Stopped")
             return "Stopped"
         else:
-            logging.debug("Interpreted status: Unknown")
             return "Unknown"
 
-    except Exception as e:
-        logging.error(f"Error querying service status: {e}")
+    except:
         return "Unknown"
 
 def status_text():
     s = get_status()
-    if s == "Running":
-        return "🟢 Running"
-    elif s == "Stopped":
-        return "🔴 Stopped"
-    elif s == "Not Elevated":
-        return "🔵 Not Elevated"
-    else:
-        return "🟡 Unknown"
+    return {
+        "Running": "🟢 Running",
+        "Stopped": "🔴 Stopped",
+        "Not Elevated": "🔵 Not Elevated",
+        "Unknown": "🟡 Unknown"
+    }.get(s, "🟡 Unknown")
 
 # -------------------------
 # MENU ACTIONS
@@ -149,35 +150,19 @@ def quit_app(icon, item):
 # -------------------------
 
 def status_watcher(icon):
-    logging.info("Status watcher thread started")
+    last_status = None
 
     while icon.visible:
         s = get_status()
-        logging.debug(f"Watcher sees status: {s}")
 
-        try:
-            if s == "Not Elevated":
-                icon.icon = ICON_NOT_ELEVATED
-                logging.debug("Icon set to BLUE (Not Elevated)")
-            elif s == "Running":
-                icon.icon = ICON_RUNNING
-                logging.debug("Icon set to GREEN (Running)")
-            elif s == "Stopped":
-                icon.icon = ICON_STOPPED
-                logging.debug("Icon set to RED (Stopped)")
-            else:
-                icon.icon = ICON_UNKNOWN
-                logging.debug("Icon set to YELLOW (Unknown)")
+        # Only recreate icon when status changes
+        if s != last_status:
+            color = COLOR_MAP.get(s, "yellow")
+            icon.icon = fresh_icon(color)
+            last_status = s
 
-            new_title = f"qBittorrent Cleaner ({status_text()})"
-            icon.title = new_title
-            logging.debug(f"Tooltip updated to: {new_title}")
-
-            icon.update_menu()
-            logging.debug("Menu updated")
-
-        except Exception as e:
-            logging.error(f"Error updating icon/menu: {e}")
+        icon.title = f"qBittorrent Cleaner ({status_text()})"
+        icon.update_menu()
 
         time.sleep(1)
 
@@ -187,7 +172,7 @@ def status_watcher(icon):
 
 icon = pystray.Icon(
     "QBCleaner",
-    ICON_UNKNOWN,
+    fresh_icon("yellow"),
     title=f"qBittorrent Cleaner ({status_text()})",
     menu=pystray.Menu(
         item(lambda _: f"Status: {status_text()}", None, enabled=False),
@@ -202,12 +187,7 @@ icon = pystray.Icon(
     )
 )
 
-# -------------------------
-# START ICON, THEN START WATCHER THREAD
-# -------------------------
-
 def start_watcher_after_icon():
-    # Give pystray time to initialize the Windows message loop
     time.sleep(0.5)
     threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
 
