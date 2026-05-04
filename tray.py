@@ -9,12 +9,26 @@ import win32serviceutil
 import threading
 import time
 import ctypes
+import logging
 from cleaner import Cleaner
 
 SERVICE_NAME = "QBCleanerService"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(BASE_DIR, "qb-cleaner.log")
 RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
+DEBUG_LOG = os.path.join(BASE_DIR, "tray-debug.log")
+
+# -------------------------
+# DEBUG LOGGING
+# -------------------------
+
+logging.basicConfig(
+    filename=DEBUG_LOG,
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+
+logging.info("Tray starting up")
 
 # -------------------------
 # ELEVATION CHECK
@@ -22,8 +36,11 @@ RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
 
 def is_elevated():
     try:
-        return ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except:
+        elevated = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        logging.debug(f"is_elevated() -> {elevated}")
+        return elevated
+    except Exception as e:
+        logging.error(f"Elevation check failed: {e}")
         return False
 
 # -------------------------
@@ -47,21 +64,37 @@ ICON_NOT_ELEVATED = make_icon("blue")
 
 def get_status():
     if not is_elevated():
+        logging.debug("Status: Not Elevated")
         return "Not Elevated"
 
     try:
-        status = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
+        raw = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
+        logging.debug(f"Raw service status code: {raw}")
 
-        if status in (2, 4):  # Start Pending or Running
+        if raw in (2, 4):
+            logging.debug("Interpreted status: Running")
             return "Running"
-        elif status == 1:
+        elif raw == 1:
+            logging.debug("Interpreted status: Stopped")
             return "Stopped"
-        elif status in (3, 5, 6, 7):
-            return "Unknown"
         else:
+            logging.debug("Interpreted status: Unknown")
             return "Unknown"
-    except Exception:
+
+    except Exception as e:
+        logging.error(f"Error querying service status: {e}")
         return "Unknown"
+
+def status_text():
+    s = get_status()
+    if s == "Running":
+        return "🟢 Running"
+    elif s == "Stopped":
+        return "🔴 Stopped"
+    elif s == "Not Elevated":
+        return "🔵 Not Elevated"
+    else:
+        return "🟡 Unknown"
 
 # -------------------------
 # MENU ACTIONS
@@ -116,32 +149,48 @@ def quit_app(icon, item):
 # -------------------------
 
 def status_watcher(icon):
+    logging.info("Status watcher thread started")
+
     while icon.visible:
-        status = get_status()
+        s = get_status()
+        logging.debug(f"Watcher sees status: {s}")
 
-        if status == "Not Elevated":
-            icon.icon = ICON_NOT_ELEVATED
-        elif status == "Running":
-            icon.icon = ICON_RUNNING
-        elif status == "Stopped":
-            icon.icon = ICON_STOPPED
-        else:
-            icon.icon = ICON_UNKNOWN
+        try:
+            if s == "Not Elevated":
+                icon.icon = ICON_NOT_ELEVATED
+                logging.debug("Icon set to BLUE (Not Elevated)")
+            elif s == "Running":
+                icon.icon = ICON_RUNNING
+                logging.debug("Icon set to GREEN (Running)")
+            elif s == "Stopped":
+                icon.icon = ICON_STOPPED
+                logging.debug("Icon set to RED (Stopped)")
+            else:
+                icon.icon = ICON_UNKNOWN
+                logging.debug("Icon set to YELLOW (Unknown)")
 
-        icon.title = f"qBittorrent Cleaner ({status})"
+            new_title = f"qBittorrent Cleaner ({status_text()})"
+            icon.title = new_title
+            logging.debug(f"Tooltip updated to: {new_title}")
+
+            icon.update_menu()
+            logging.debug("Menu updated")
+
+        except Exception as e:
+            logging.error(f"Error updating icon/menu: {e}")
+
         time.sleep(1)
 
 # -------------------------
 # TRAY ICON SETUP
 # -------------------------
 
-initial_status = get_status()
-
 icon = pystray.Icon(
     "QBCleaner",
-    ICON_NOT_ELEVATED if initial_status == "Not Elevated" else ICON_UNKNOWN,
-    title=f"qBittorrent Cleaner ({initial_status})",
+    ICON_UNKNOWN,
+    title=f"qBittorrent Cleaner ({status_text()})",
     menu=pystray.Menu(
+        item(lambda _: f"Status: {status_text()}", None, enabled=False),
         item("Run Cleanup Now", run_cleanup_now),
         item("Start Service", start_service),
         item("Stop Service", stop_service),
@@ -153,6 +202,15 @@ icon = pystray.Icon(
     )
 )
 
-threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
+# -------------------------
+# START ICON, THEN START WATCHER THREAD
+# -------------------------
+
+def start_watcher_after_icon():
+    # Give pystray time to initialize the Windows message loop
+    time.sleep(0.5)
+    threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
+
+threading.Thread(target=start_watcher_after_icon, daemon=True).start()
 
 icon.run()
