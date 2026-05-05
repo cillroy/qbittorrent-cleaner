@@ -29,7 +29,9 @@ Designed for automation‑heavy setups (Sonarr, Radarr, Lidarr, etc.) where torr
   - `added_on_hours_gt`
   - `tracker_contains`
 - Hot‑reloads configuration every cycle
-- Logs actions to `qb-cleaner.log`
+- **Automatic log rotation** (daily, configurable retention)
+- **Windows toast notifications** when torrents are deleted
+- Logs actions to `qb-cleaner.log` (with rotation)
 
 ### Tray Application
 - Shows **live service status** (Running / Stopped / Unknown / Not Elevated)
@@ -71,7 +73,7 @@ qBittorrent Cleaner/
 - Python 3.11+  
 - qBittorrent with Web UI enabled  
 - Python packages:
-`pip install pywin32 requests pyyaml pystray pillow`
+`pip install pywin32 requests pyyaml pystray pillow plyer`
 ---
 
 # 🚀 Installation
@@ -108,8 +110,9 @@ qbittorrent:
   username: "admin"
   password: "adminadmin"
 
-service:
-  interval_seconds: 1800   # run every 30 minutes
+logging:
+  max_days: 30          # Keep 30 days of logs
+  enable_notifications: true  # Show Windows notifications
 
 rules:
   - name: "Delete inactive Sonarr/Radarr torrents"
@@ -254,7 +257,7 @@ env/
 .venv/
 
 # Logs
-qb-cleaner.log
+qb-cleaner.log*
 tray-debug.log
 
 # Windows service artifacts
