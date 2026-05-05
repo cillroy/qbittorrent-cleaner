@@ -11,6 +11,8 @@ import time
 import ctypes
 import logging
 import sys
+import yaml
+from plyer import notification
 from cleaner import Cleaner
 
 SERVICE_NAME = "QBCleanerService"
@@ -36,6 +38,15 @@ else:
     logging.basicConfig(level=logging.CRITICAL)
 
 # -------------------------
+# LOAD CONFIG
+# -------------------------
+
+with open(RULES_PATH, "r") as f:
+    config = yaml.safe_load(f)
+logging_config = config.get("logging", {})
+enable_notifications = logging_config.get("enable_notifications", True)
+
+# -------------------------
 # ELEVATION CHECK
 # -------------------------
 
@@ -50,9 +61,10 @@ def is_elevated():
 # -------------------------
 
 def make_icon(color):
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    # Use 32x32 for better tray icon compatibility
+    img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.ellipse((6, 6, 58, 58), fill=color, outline="black", width=3)
+    d.ellipse((4, 4, 28, 28), fill=color, outline="black", width=2)
     return img
 
 def fresh_icon(color):
@@ -76,16 +88,29 @@ def get_status():
         return "Not Elevated"
 
     try:
-        raw = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
+        status = win32serviceutil.QueryServiceStatus(SERVICE_NAME)
+        raw = status[1]
 
-        if raw in (2, 4):
+        # Service status codes:
+        # 1 = SERVICE_STOPPED
+        # 2 = SERVICE_START_PENDING
+        # 3 = SERVICE_STOP_PENDING
+        # 4 = SERVICE_RUNNING
+        # 5 = SERVICE_CONTINUE_PENDING
+        # 6 = SERVICE_PAUSE_PENDING
+        # 7 = SERVICE_PAUSED
+
+        if raw == 4:
             return "Running"
         elif raw == 1:
             return "Stopped"
+        elif raw in (2, 3, 5, 6):
+            return "Unknown"  # Transitioning
         else:
             return "Unknown"
 
-    except:
+    except Exception as e:
+        # Service might not exist or other error
         return "Unknown"
 
 def status_text():
@@ -123,7 +148,16 @@ def restart_service(icon, item):
     icon.notify("Service restarted")
 
 def run_cleanup_now(icon, item):
-    cleaner = Cleaner(logger=lambda msg: icon.notify(msg))
+    def combined_logger(msg):
+        icon.notify(msg)
+        if enable_notifications:
+            notification.notify(
+                title="qBittorrent Cleaner",
+                message=msg,
+                app_name="qBittorrent Cleaner"
+            )
+
+    cleaner = Cleaner(logger=combined_logger, notifier=combined_logger)
     cleaner.run_once()
     icon.notify("Cleanup executed")
 
@@ -155,14 +189,23 @@ def status_watcher(icon):
     while icon.visible:
         s = get_status()
 
+        # Debug logging
+        if ENABLE_DEBUG:
+            logging.debug(f"Service status: {s}")
+
         # Only recreate icon when status changes
         if s != last_status:
             color = COLOR_MAP.get(s, "yellow")
-            icon.icon = fresh_icon(color)
+            new_icon = fresh_icon(color)
+            icon.icon = new_icon
+            # Force update
+            icon.update_menu()
             last_status = s
 
+            if ENABLE_DEBUG:
+                logging.debug(f"Updated icon to color: {color} for status: {s}")
+
         icon.title = f"qBittorrent Cleaner ({status_text()})"
-        icon.update_menu()
 
         time.sleep(1)
 
@@ -177,6 +220,7 @@ icon = pystray.Icon(
     menu=pystray.Menu(
         item(lambda _: f"Status: {status_text()}", None, enabled=False),
         item("Run Cleanup Now", run_cleanup_now),
+        item("Refresh Status", lambda icon, item: None),  # Placeholder for refresh
         item("Start Service", start_service),
         item("Stop Service", stop_service),
         item("Restart Service", restart_service),

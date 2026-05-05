@@ -6,6 +6,9 @@ import win32event
 import servicemanager
 import time
 import os
+import logging
+from logging.handlers import TimedRotatingFileHandler
+from plyer import notification
 from cleaner import Cleaner
 
 # -------------------------
@@ -16,19 +19,48 @@ from cleaner import Cleaner
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(BASE_DIR, "qb-cleaner.log")
 
+# Load config for logging settings (before creating logger)
+import yaml
+config_path = os.path.join(BASE_DIR, "rules.yaml")
+with open(config_path, "r") as f:
+    config = yaml.safe_load(f)
+logging_config = config.get("logging", {})
+max_days = logging_config.get("max_days", 30)
+enable_notifications = logging_config.get("enable_notifications", True)
+
+# Set up logging with rotation
+logger = logging.getLogger("qb_cleaner")
+logger.setLevel(logging.INFO)
+
+# Create handler for file logging with rotation
+handler = TimedRotatingFileHandler(
+    LOG_PATH,
+    when="midnight",
+    interval=1,
+    backupCount=max_days
+)
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+logger.addHandler(handler)
+
+# Create handler for Windows Event Log
+class EventLogHandler(logging.Handler):
+    def emit(self, record):
+        servicemanager.LogInfoMsg(self.format(record))
+
+event_handler = EventLogHandler()
+event_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+logger.addHandler(event_handler)
+
 def log(msg):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{timestamp}] {msg}"
+    logger.info(msg)
 
-    # Write to Windows Event Log
-    servicemanager.LogInfoMsg(line)
-
-    # Write to log file
-    try:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-    except Exception:
-        pass
+def notify(msg):
+    if enable_notifications:
+        notification.notify(
+            title="qBittorrent Cleaner",
+            message=msg,
+            app_name="qBittorrent Cleaner"
+        )
 
 
 class QBCleanerService(win32serviceutil.ServiceFramework):
@@ -40,8 +72,8 @@ class QBCleanerService(win32serviceutil.ServiceFramework):
         super().__init__(args)
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
 
-        # Pass logger into Cleaner
-        self.cleaner = Cleaner(logger=log)
+        # Pass logger and notifier into Cleaner
+        self.cleaner = Cleaner(logger=log, notifier=notify)
 
     def SvcStop(self):
         log("Service stop requested")
