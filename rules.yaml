@@ -6,6 +6,10 @@ qbittorrent:
   # username: "admin"
   # password: "adminadmin"
 
+logging:
+  max_days: 30
+  enable_notifications: true
+
 rules:
   - name: "Auto-clean inactive labeled torrents : >=40 days"
     match:

@@ -7,8 +7,9 @@ from datetime import datetime
 from qb_api import QBClient
 
 class Cleaner:
-    def __init__(self, config_path="rules.yaml", logger=print):
+    def __init__(self, config_path="rules.yaml", logger=print, notifier=None):
         self.logger = logger
+        self.notifier = notifier
 
         # Resolve rules.yaml relative to this file (fixes Windows service crash)
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -110,7 +111,10 @@ class Cleaner:
                             t["hash"],
                             action.get("delete_files", False)
                         )
-                        self.logger(f"Deleted: {t['name']} via rule {rule['name']}")
+                        msg = f"Deleted: {t['name']} via rule {rule['name']}"
+                        self.logger(msg)
+                        if self.notifier:
+                            self.notifier(msg)
 
     # Wrapper for manual testing
     def run_once(self):
