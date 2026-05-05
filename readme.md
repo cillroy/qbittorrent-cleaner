@@ -102,6 +102,10 @@ Enable Web UI:
 All behavior is controlled through `rules.yaml`.  
 The service reloads this file every cycle.
 
+Optional (but suggested):
+- `username`
+- `password`
+
 ### Example default rule (40 days inactivity, Sonarr/Radarr labels)
 
 ```yaml
@@ -232,60 +236,4 @@ Task Scheduler → Delete task
 Remove the folder:
 ```
 C:\qBittorrent Cleaner
-```
-
-# 📜 License
-MIT License (or your preferred license)
-
-```
-
----
-
-# ✅ **.gitignore (tailored for your project)**
-
-```gitignore
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pdb
-
-# Virtual environments
-venv/
-env/
-.venv/
-
-# Logs
-qb-cleaner.log*
-tray-debug.log
-
-# Windows service artifacts
-*.exe
-*.dll
-*.manifest
-*.spec
-
-# PyInstaller / build artifacts
-build/
-dist/
-*.egg-info/
-*.egg
-
-# IDE / editor junk
-.vscode/
-.idea/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# OS junk
-Thumbs.db
-Desktop.ini
-
-# Backup files
-*.bak
-*.tmp
-*.old
 ```
