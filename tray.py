@@ -132,6 +132,7 @@ web_process = None  # Global variable to track web server process
 def get_web_status():
     web_config = config.get("web", {})
     port = web_config.get("port", 8081)
+    logging.debug(f"Checking web server status on port {port}")
 
     try:
         # Try to connect to the web server port
@@ -139,12 +140,16 @@ def get_web_status():
         sock.settimeout(1)
         result = sock.connect_ex(('127.0.0.1', port))
         sock.close()
+        logging.debug(f"Port {port} connection result: {result}")
 
         if result == 0:
+            logging.debug(f"Web server detected as Running on port {port}")
             return "Running"
         else:
+            logging.debug(f"Web server detected as Stopped (port {port} not responding)")
             return "Stopped"
-    except:
+    except Exception as e:
+        logging.debug(f"Error checking web server status: {e}")
         return "Unknown"
 
 def web_status_text():
@@ -157,12 +162,20 @@ def web_status_text():
 
 def start_web_server(icon, item):
     global web_process
+    logging.debug("start_web_server() called")
 
-    if get_web_status() == "Running":
+    current_status = get_web_status()
+    logging.debug(f"Current web server status: {current_status}")
+
+    if current_status == "Running":
+        logging.debug("Web server already running, skipping start")
         icon.notify("Web server is already running")
         return
 
     try:
+        logging.debug(f"Starting web server subprocess with: {sys.executable} web.py")
+        logging.debug(f"Working directory: {BASE_DIR}")
+
         # Start web server as subprocess
         web_process = subprocess.Popen(
             [sys.executable, "web.py"],
@@ -171,48 +184,82 @@ def start_web_server(icon, item):
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW
         )
+        logging.debug(f"Subprocess created with PID: {web_process.pid}")
+
+        logging.debug("Waiting 2 seconds for web server to start...")
         time.sleep(2)  # Give it time to start
 
-        if get_web_status() == "Running":
+        final_status = get_web_status()
+        logging.debug(f"Final web server status after start attempt: {final_status}")
+
+        if final_status == "Running":
+            logging.debug("Web server start successful")
             icon.notify("Web server started successfully")
         else:
+            logging.debug("Web server start failed - port not responding")
             icon.notify("Web server failed to start")
     except Exception as e:
+        logging.debug(f"Exception during web server start: {e}")
         icon.notify(f"Failed to start web server: {str(e)}")
 
 def stop_web_server(icon, item):
     global web_process
+    logging.debug("stop_web_server() called")
 
-    if get_web_status() == "Stopped":
+    current_status = get_web_status()
+    logging.debug(f"Current web server status: {current_status}")
+
+    if current_status == "Stopped":
+        logging.debug("Web server already stopped, skipping stop")
         icon.notify("Web server is already stopped")
         return
 
     try:
+        logging.debug(f"Web process object: {web_process}")
+        if web_process:
+            logging.debug(f"Web process PID: {web_process.pid}, poll status: {web_process.poll()}")
+
         # Try to terminate the process gracefully first
         if web_process and web_process.poll() is None:
+            logging.debug("Terminating web server process...")
             web_process.terminate()
             web_process.wait(timeout=5)
+            logging.debug("Web server process terminated")
             web_process = None
+        else:
+            logging.debug("No active web server process found")
 
         # Double-check if it's actually stopped
+        logging.debug("Waiting 1 second then checking final status...")
         time.sleep(1)
-        if get_web_status() == "Stopped":
+        final_status = get_web_status()
+        logging.debug(f"Final web server status after stop attempt: {final_status}")
+
+        if final_status == "Stopped":
+            logging.debug("Web server stop successful")
             icon.notify("Web server stopped successfully")
         else:
+            logging.debug("Web server stop may have failed - still responding on port")
             icon.notify("Web server may still be running")
     except Exception as e:
+        logging.debug(f"Exception during web server stop: {e}")
         icon.notify(f"Error stopping web server: {str(e)}")
 
 def open_web_interface(icon, item):
+    logging.debug("open_web_interface() called")
+
     web_config = config.get("web", {})
     port = web_config.get("port", 8081)
     url = f"http://localhost:{port}"
+    logging.debug(f"Opening web interface URL: {url}")
 
     try:
         import webbrowser
         webbrowser.open(url)
+        logging.debug("Browser opened successfully")
         icon.notify(f"Opened web interface: {url}")
     except Exception as e:
+        logging.debug(f"Failed to open browser: {e}")
         icon.notify(f"Failed to open browser: {str(e)}")
 
 # -------------------------
