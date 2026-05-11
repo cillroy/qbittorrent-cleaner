@@ -1,0 +1,41 @@
+# rules.yaml
+
+qbittorrent:
+  url: "http://127.0.0.1:8080"
+  username: "admin"
+  password: "adminadmin"
+
+logging:
+  max_days: 30
+  enable_notifications: true
+
+web:
+  port: 8082
+  username: "admin"
+  password: "webadmin"
+  enable_auth: true
+
+rules:
+  - name: "Auto-clean inactive labeled torrents : >=40 days"
+    match:
+      category_in: ["category_0", "category_1"]
+      last_activity_hours_gte: 960
+    action:
+      delete_torrent: true
+      delete_files: true
+
+  # - name: "Remove completed torrents with ratio > 3"
+  #   match:
+  #     state: "uploading"
+  #     ratio_gt: 3
+  #   action:
+  #     delete_torrent: true
+  #     delete_files: false
+
+  # - name: "Purge stalled torrents older than 7 days"
+  #   match:
+  #     state: "stalledDL"
+  #     added_on_hours_gt: 168
+  #   action:
+  #     delete_torrent: true
+  #     delete_files: true
