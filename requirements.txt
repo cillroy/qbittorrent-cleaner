@@ -4,3 +4,7 @@ PyYAML
 pystray
 Pillow
 plyer
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart

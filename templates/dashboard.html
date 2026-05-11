@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - qBittorrent Cleaner{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Dashboard</h1>
+    <p>Service Status: {{ service_status }}</p>
+    <p>qBittorrent Status: {{ qb_status.status }}</p>
+    <p>Total Torrents: {{ qb_status.torrent_count }}</p>
+</div>
+{% endblock %}

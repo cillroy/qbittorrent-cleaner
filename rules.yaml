@@ -10,6 +10,12 @@ logging:
   max_days: 30
   enable_notifications: true
 
+web:
+  port: 8082
+  username: "admin"
+  password: "webadmin"
+  enable_auth: true
+
 rules:
   - name: "Auto-clean inactive labeled torrents : >=40 days"
     match:

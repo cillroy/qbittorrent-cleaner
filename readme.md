@@ -222,11 +222,65 @@ tray-debug.log → tray status, icon updates, service queries
 | Service not starting | Wrong Web UI credentials | Update rules.yaml |
 | Cleanup not happening | Rule mismatch | Check debug logs |
 
+# 🌐 Web Interface
+
+The web interface provides remote access to monitor and control the qBittorrent Cleaner from any browser.
+
+## Features
+
+- **Dashboard**: View service status, qBittorrent connection, recent torrents, and activity logs
+- **Rules Management**: Add, edit, and delete cleanup rules through a web form
+- **Logs**: View recent application logs with auto-refresh
+- **Settings**: Configure qBittorrent connection, web server settings, and logging preferences
+- **Manual Cleanup**: Trigger cleanup runs on demand
+
+## Starting the Web Server
+
+Run the web server (can be done independently of the Windows service):
+```bash
+python web.py
+```
+
+The web interface will be available at: `http://localhost:8082` (configurable in `rules.yaml`)
+
+## Configuration
+
+Web settings are configured in `rules.yaml`:
+
+```yaml
+web:
+  port: 8082                    # Web server port
+  username: "admin"             # Web interface username
+  password: "webadmin"          # Web interface password
+  enable_auth: true             # Enable/disable authentication
+```
+
+## Security
+
+- HTTP Basic Authentication (username/password)
+- Configurable credentials
+- Can be disabled for local networks
+
+## Running as a Service
+
+To run the web server automatically, you can:
+
+1. Create a Windows Scheduled Task to run `python web.py` at startup
+2. Use a process manager like NSSM to create a Windows service for the web server
+3. Run it manually when needed
+
+The web server is completely independent and can run even when the cleanup service is stopped.
+
 # 🧹 Uninstall
 Stop and remove the service:
 ```
 python service.py stop
 python service.py remove
+```
+
+Stop the web server (if running):
+```
+# Find the python process running web.py and terminate it
 ```
 
 Delete the Scheduled Task:
