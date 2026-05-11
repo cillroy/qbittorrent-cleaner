@@ -5,8 +5,32 @@
 {% block content %}
 <div class="container">
     <h1>Dashboard</h1>
-    <p>Service Status: {{ service_status }}</p>
-    <p>qBittorrent Status: {{ qb_status.status }}</p>
-    <p>Total Torrents: {{ qb_status.torrent_count }}</p>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">System Status</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Service Status:</strong> {{ service_status }}</p>
+                    <p><strong>qBittorrent Status:</strong> {{ qb_status.status }}</p>
+                    <p><strong>Total Torrents:</strong> {{ qb_status.torrent_count }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Deletion Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Torrents deleted (last 24h):</strong> {{ deletion_stats.last_24h }}</p>
+                    <p><strong>Torrents deleted (last 30 days):</strong> {{ deletion_stats.last_30d }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
