@@ -41,11 +41,10 @@ Designed for automation‑heavy setups (Sonarr, Radarr, Lidarr, etc.) where torr
   - 🟡 Unknown  
   - 🔵 Not Elevated  
 - Right‑click menu:
-  - Start / Stop / Restart service
-  - Run cleanup immediately
-  - Open log file
-  - Open rules.yaml
-  - Open installation folder
+  - **Service Control**: Start / Stop / Restart service
+  - **Web Server Control**: Start / Stop web server, Open web interface
+  - **Manual Operations**: Run cleanup immediately
+  - **File Access**: Open log file, rules.yaml, installation folder
 - Optional debug logging (`python tray.py debug`)
 - Auto‑starts via Scheduled Task (with elevation)
 

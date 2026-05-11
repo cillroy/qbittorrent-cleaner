@@ -12,6 +12,7 @@ import ctypes
 import logging
 import sys
 import yaml
+import socket
 from plyer import notification
 from cleaner import Cleaner
 
@@ -123,6 +124,98 @@ def status_text():
     }.get(s, "🟡 Unknown")
 
 # -------------------------
+# WEB SERVER MANAGEMENT
+# -------------------------
+
+web_process = None  # Global variable to track web server process
+
+def get_web_status():
+    web_config = config.get("web", {})
+    port = web_config.get("port", 8081)
+
+    try:
+        # Try to connect to the web server port
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(('127.0.0.1', port))
+        sock.close()
+
+        if result == 0:
+            return "Running"
+        else:
+            return "Stopped"
+    except:
+        return "Unknown"
+
+def web_status_text():
+    s = get_web_status()
+    return {
+        "Running": "🌐 Web: Running",
+        "Stopped": "🌐 Web: Stopped",
+        "Unknown": "🌐 Web: Unknown"
+    }.get(s, "🌐 Web: Unknown")
+
+def start_web_server(icon, item):
+    global web_process
+
+    if get_web_status() == "Running":
+        icon.notify("Web server is already running")
+        return
+
+    try:
+        # Start web server as subprocess
+        web_process = subprocess.Popen(
+            [sys.executable, "web.py"],
+            cwd=BASE_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        time.sleep(2)  # Give it time to start
+
+        if get_web_status() == "Running":
+            icon.notify("Web server started successfully")
+        else:
+            icon.notify("Web server failed to start")
+    except Exception as e:
+        icon.notify(f"Failed to start web server: {str(e)}")
+
+def stop_web_server(icon, item):
+    global web_process
+
+    if get_web_status() == "Stopped":
+        icon.notify("Web server is already stopped")
+        return
+
+    try:
+        # Try to terminate the process gracefully first
+        if web_process and web_process.poll() is None:
+            web_process.terminate()
+            web_process.wait(timeout=5)
+            web_process = None
+
+        # Double-check if it's actually stopped
+        time.sleep(1)
+        if get_web_status() == "Stopped":
+            icon.notify("Web server stopped successfully")
+        else:
+            icon.notify("Web server may still be running")
+    except Exception as e:
+        icon.notify(f"Error stopping web server: {str(e)}")
+
+def open_web_interface(icon, item):
+    web_config = config.get("web", {})
+    port = web_config.get("port", 8081)
+    url = f"http://localhost:{port}"
+
+    try:
+        import webbrowser
+        webbrowser.open(url)
+        icon.notify(f"Opened web interface: {url}")
+    except Exception as e:
+        icon.notify(f"Failed to open browser: {str(e)}")
+
+# -------------------------
 # MENU ACTIONS
 # -------------------------
 
@@ -219,11 +312,19 @@ icon = pystray.Icon(
     title=f"qBittorrent Cleaner ({status_text()})",
     menu=pystray.Menu(
         item(lambda _: f"Status: {status_text()}", None, enabled=False),
+        item(lambda _: f"{web_status_text()}", None, enabled=False),
+        item("---", None, enabled=False),  # Separator
         item("Run Cleanup Now", run_cleanup_now),
         item("Refresh Status", lambda icon, item: None),  # Placeholder for refresh
+        item("---", None, enabled=False),  # Separator
         item("Start Service", start_service),
         item("Stop Service", stop_service),
         item("Restart Service", restart_service),
+        item("---", None, enabled=False),  # Separator
+        item("Start Web Server", start_web_server),
+        item("Stop Web Server", stop_web_server),
+        item("Open Web Interface", open_web_interface),
+        item("---", None, enabled=False),  # Separator
         item("Open Log File", open_log),
         item("View Config File", open_rules),
         item("Open Folder", open_folder),
