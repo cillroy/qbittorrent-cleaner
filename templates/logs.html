@@ -11,7 +11,7 @@
                 <button class="btn btn-outline-secondary" onclick="refreshLogs()">
                     <i class="fas fa-sync"></i> Refresh
                 </button>
-                <a href="/static/logs/qb-cleaner.log" class="btn btn-outline-primary" target="_blank">
+                <a href="/download-logs" class="btn btn-outline-primary" target="_blank">
                     <i class="fas fa-download"></i> Download Full Log
                 </a>
             </div>
@@ -27,7 +27,7 @@
         </div>
 
         <div class="mt-3 text-muted">
-            <small>Showing last {{ logs|length }} log entries. <a href="/static/logs/qb-cleaner.log" target="_blank">View full log file</a></small>
+            <small>Showing last {{ logs|length }} log entries. <a href="/download-logs" target="_blank">Download full log file</a></small>
         </div>
     </div>
 </div>
