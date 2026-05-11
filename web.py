@@ -244,6 +244,37 @@ def delete_rule(rule_index: int, auth=Depends(authenticate)):
         save_config(config)
     return RedirectResponse(url="/rules", status_code=303)
 
+@app.post("/rules/edit/{rule_index}")
+def edit_rule(
+    rule_index: int,
+    name: str = Form(...),
+    match_json: str = Form(...),
+    delete_torrent: bool = Form(False),
+    delete_files: bool = Form(False),
+    auth=Depends(authenticate)
+):
+    try:
+        import json
+        match_criteria = json.loads(match_json)
+    except:
+        match_criteria = {}
+
+    if "rules" not in config:
+        config["rules"] = []
+
+    if 0 <= rule_index < len(config["rules"]):
+        config["rules"][rule_index] = {
+            "name": name,
+            "match": match_criteria,
+            "action": {
+                "delete_torrent": delete_torrent,
+                "delete_files": delete_files
+            }
+        }
+        save_config(config)
+
+    return RedirectResponse(url="/rules", status_code=303)
+
 @app.post("/cleanup")
 def run_cleanup(auth=Depends(authenticate)):
     try:
