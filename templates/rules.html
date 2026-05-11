@@ -17,14 +17,21 @@
             {% for rule in rules %}
             <div class="col-md-6 mb-4">
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">{{ rule.name }}</h5>
-                        <button class="btn btn-sm btn-outline-danger"
-                                onclick="deleteRule({{ loop.index0 }})"
-                                aria-label="Delete rule">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
+                     <div class="card-header d-flex justify-content-between align-items-center">
+                         <h5 class="mb-0">{{ rule.name }}</h5>
+                         <div>
+                             <button class="btn btn-sm btn-outline-primary me-2"
+                                     onclick="editRule({{ loop.index0 }})"
+                                     aria-label="Edit rule">
+                                 <i class="fas fa-edit"></i>
+                             </button>
+                             <button class="btn btn-sm btn-outline-danger"
+                                     onclick="deleteRule({{ loop.index0 }})"
+                                     aria-label="Delete rule">
+                                 <i class="fas fa-trash"></i>
+                             </button>
+                         </div>
+                     </div>
                     <div class="card-body">
                         <h6>Match Criteria:</h6>
                         <ul class="list-unstyled">
@@ -128,11 +135,65 @@
         </div>
     </div>
 </div>
+
+<!-- Edit Rule Modal -->
+<div class="modal fade" id="editRuleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Rule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editRuleForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editRuleName" class="form-label">Rule Name</label>
+                        <input type="text" class="form-control" id="editRuleName" name="name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Match Criteria</label>
+                        <div id="editMatchCriteria">
+                            <!-- Criteria will be populated by JavaScript -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addEditCriteria()">
+                            <i class="fas fa-plus"></i> Add Criteria
+                        </button>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Actions</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editDeleteTorrent" name="delete_torrent">
+                            <label class="form-check-label" for="editDeleteTorrent">
+                                Delete Torrent
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editDeleteFiles" name="delete_files">
+                            <label class="form-check-label" for="editDeleteFiles">
+                                Delete Files
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Rule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script type="application/json" id="rules-data">
+{{ rules|tojson }}
+</script>
 <script>
 let criteriaCount = 1;
+const rulesData = JSON.parse(document.getElementById('rules-data').textContent);
 
 function addCriteria() {
     const container = document.getElementById('matchCriteria');
@@ -212,6 +273,133 @@ document.getElementById('addRuleForm').addEventListener('submit', function(e) {
     submitData.append('delete_files', formData.has('delete_files') ? 'on' : '');
 
     fetch('/rules/add', {
+        method: 'POST',
+        body: submitData
+    }).then(() => {
+        location.reload();
+    });
+});
+
+function editRule(index) {
+    const rule = rulesData[index];
+    document.getElementById('editRuleName').value = rule.name;
+    document.getElementById('editDeleteTorrent').checked = rule.action.delete_torrent;
+    document.getElementById('editDeleteFiles').checked = rule.action.delete_files;
+
+    // Clear existing criteria
+    const container = document.getElementById('editMatchCriteria');
+    container.innerHTML = '';
+
+    // Populate criteria
+    let editCriteriaCount = 0;
+    for (const [key, value] of Object.entries(rule.match)) {
+        const div = document.createElement('div');
+        div.className = 'input-group mb-2';
+        let valueStr = value;
+        if (Array.isArray(value)) {
+            valueStr = value.join(', ');
+        }
+        div.innerHTML = `
+            <select class="form-select edit-match-key" name="edit_match_key_${editCriteriaCount}">
+                <option value="">Select criteria...</option>
+                <option value="label" ${key === 'label' ? 'selected' : ''}>Label (exact)</option>
+                <option value="label_in" ${key === 'label_in' ? 'selected' : ''}>Label (in list)</option>
+                <option value="category" ${key === 'category' ? 'selected' : ''}>Category (exact)</option>
+                <option value="category_in" ${key === 'category_in' ? 'selected' : ''}>Category (in list)</option>
+                <option value="state" ${key === 'state' ? 'selected' : ''}>State</option>
+                <option value="ratio_gt" ${key === 'ratio_gt' ? 'selected' : ''}>Ratio greater than</option>
+                <option value="ratio_lt" ${key === 'ratio_lt' ? 'selected' : ''}>Ratio less than</option>
+                <option value="size_gt" ${key === 'size_gt' ? 'selected' : ''}>Size greater than (bytes)</option>
+                <option value="size_lt" ${key === 'size_lt' ? 'selected' : ''}>Size less than (bytes)</option>
+                <option value="last_activity_hours_gt" ${key === 'last_activity_hours_gt' ? 'selected' : ''}>Last activity > hours</option>
+                <option value="last_activity_hours_gte" ${key === 'last_activity_hours_gte' ? 'selected' : ''}>Last activity >= hours</option>
+                <option value="added_on_hours_gt" ${key === 'added_on_hours_gt' ? 'selected' : ''}>Added > hours ago</option>
+                <option value="added_on_hours_gte" ${key === 'added_on_hours_gte' ? 'selected' : ''}>Added >= hours ago</option>
+                <option value="tracker_contains" ${key === 'tracker_contains' ? 'selected' : ''}>Tracker contains</option>
+                <option value="progress_eq" ${key === 'progress_eq' ? 'selected' : ''}>Progress equals (0.0-1.0)</option>
+            </select>
+            <input type="text" class="form-control edit-match-value" name="edit_match_value_${editCriteriaCount}" value="${valueStr}" placeholder="Value">
+            <button class="btn btn-outline-danger" type="button" onclick="removeCriteria(this)">
+                <i class="fas fa-minus"></i>
+            </button>
+        `;
+        container.appendChild(div);
+        editCriteriaCount++;
+    }
+
+    // Store the rule index for the form submission
+    document.getElementById('editRuleForm').setAttribute('data-rule-index', index);
+
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('editRuleModal'));
+    modal.show();
+}
+
+function addEditCriteria() {
+    const container = document.getElementById('editMatchCriteria');
+    const editCriteriaCount = container.children.length;
+    const div = document.createElement('div');
+    div.className = 'input-group mb-2';
+    div.innerHTML = `
+        <select class="form-select edit-match-key" name="edit_match_key_${editCriteriaCount}">
+            <option value="">Select criteria...</option>
+            <option value="label">Label (exact)</option>
+            <option value="label_in">Label (in list)</option>
+            <option value="category">Category (exact)</option>
+            <option value="category_in">Category (in list)</option>
+            <option value="state">State</option>
+            <option value="ratio_gt">Ratio greater than</option>
+            <option value="ratio_lt">Ratio less than</option>
+            <option value="size_gt">Size greater than (bytes)</option>
+            <option value="size_lt">Size less than (bytes)</option>
+            <option value="last_activity_hours_gt">Last activity > hours</option>
+            <option value="last_activity_hours_gte">Last activity >= hours</option>
+            <option value="added_on_hours_gt">Added > hours ago</option>
+            <option value="added_on_hours_gte">Added >= hours ago</option>
+            <option value="tracker_contains">Tracker contains</option>
+            <option value="progress_eq">Progress equals (0.0-1.0)</option>
+        </select>
+        <input type="text" class="form-control edit-match-value" name="edit_match_value_${editCriteriaCount}" placeholder="Value">
+        <button class="btn btn-outline-danger" type="button" onclick="removeCriteria(this)">
+            <i class="fas fa-minus"></i>
+        </button>
+    `;
+    container.appendChild(div);
+}
+
+document.getElementById('editRuleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const ruleIndex = this.getAttribute('data-rule-index');
+    const formData = new FormData(this);
+    const matchCriteria = {};
+
+    // Build match criteria object
+    document.querySelectorAll('.edit-match-key').forEach((keySelect, index) => {
+        const key = keySelect.value;
+        const valueInput = document.querySelectorAll('.edit-match-value')[index];
+        const value = valueInput.value;
+
+        if (key && value) {
+            // Handle list values (comma-separated)
+            if (key.includes('_in')) {
+                matchCriteria[key] = value.split(',').map(s => s.trim());
+            } else if (key.includes('progress_eq') || key.includes('ratio_') || key.includes('_hours_') || key.includes('size_')) {
+                matchCriteria[key] = parseFloat(value);
+            } else {
+                matchCriteria[key] = value;
+            }
+        }
+    });
+
+    // Create final form data
+    const submitData = new FormData();
+    submitData.append('name', formData.get('name'));
+    submitData.append('match_json', JSON.stringify(matchCriteria));
+    submitData.append('delete_torrent', formData.has('delete_torrent') ? 'on' : '');
+    submitData.append('delete_files', formData.has('delete_files') ? 'on' : '');
+
+    fetch(`/rules/edit/${ruleIndex}`, {
         method: 'POST',
         body: submitData
     }).then(() => {
