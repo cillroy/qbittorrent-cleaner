@@ -15,6 +15,7 @@ import win32serviceutil
 from cleaner import Cleaner
 from qb_api import QBClient
 import logging
+from logging.handlers import TimedRotatingFileHandler
 
 # -------------------------
 # CONFIGURATION
@@ -42,6 +43,28 @@ QB_USERNAME = qb_config.get("username")
 QB_PASSWORD = qb_config.get("password")
 
 SERVICE_NAME = "QBCleanerService"
+
+# -------------------------
+# LOGGING SETUP
+# -------------------------
+
+logging_config = config.get("logging", {})
+max_days = logging_config.get("max_days", 30)
+enable_notifications = logging_config.get("enable_notifications", True)
+
+# Set up logging with rotation
+logger = logging.getLogger("qb_cleaner")
+logger.setLevel(logging.INFO)
+
+# Create handler for file logging with rotation
+handler = TimedRotatingFileHandler(
+    LOG_PATH,
+    when="midnight",
+    interval=1,
+    backupCount=max_days
+)
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+logger.addHandler(handler)
 
 # -------------------------
 # FASTAPI SETUP
@@ -240,6 +263,59 @@ def logs_page(request: Request, auth=Depends(authenticate)):
     template = jinja_env.get_template("logs.html")
     html_content = template.render(logs=all_logs)
     return HTMLResponse(content=html_content)
+
+@app.get("/download-logs")
+def download_logs(auth=Depends(authenticate)):
+    try:
+        import glob
+        import os
+        from fastapi.responses import PlainTextResponse
+
+        # Find all log files (main + archived)
+        log_pattern = os.path.join(BASE_DIR, "qb-cleaner.log*")
+        log_files = glob.glob(log_pattern)
+
+        if not log_files:
+            return PlainTextResponse("No log files found", status_code=404)
+
+        # Sort by modification time (newest first)
+        log_files.sort(key=os.path.getmtime, reverse=True)
+
+        combined_content = []
+
+        # Read from newest files first
+        for log_file in log_files:
+            try:
+                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                    file_content = f.read()
+
+                # Add file separator for archived logs
+                if log_file != LOG_PATH:
+                    filename = os.path.basename(log_file)
+                    combined_content.append(f"\n--- Archived Log: {filename} ---\n")
+
+                # Add all content from this file
+                combined_content.append(file_content)
+
+            except Exception as e:
+                combined_content.append(f"Error reading {os.path.basename(log_file)}: {e}\n")
+
+        # Join all content
+        full_content = "".join(combined_content)
+
+        if not full_content.strip():
+            return PlainTextResponse("No logs available", status_code=404)
+
+        # Return as downloadable text file
+        return PlainTextResponse(
+            content=full_content,
+            headers={
+                "Content-Disposition": "attachment; filename=qb-cleaner-full.log"
+            }
+        )
+
+    except Exception as e:
+        return PlainTextResponse(f"Error generating log file: {e}", status_code=500)
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, auth=Depends(authenticate)):
