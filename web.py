@@ -175,6 +175,68 @@ def get_recent_logs(lines=50):
     except Exception as e:
         return [f"Error aggregating logs: {e}"]
 
+def get_deletion_stats():
+    """Count torrents deleted in the last 24 hours and 30 days"""
+    try:
+        import glob
+        import os
+        from datetime import datetime, timedelta
+
+        # Find all log files (main + archived)
+        log_pattern = os.path.join(BASE_DIR, "qb-cleaner.log*")
+        log_files = glob.glob(log_pattern)
+
+        if not log_files:
+            return {"last_24h": 0, "last_30d": 0}
+
+        now = datetime.now()
+        last_24h = now - timedelta(hours=24)
+        last_30d = now - timedelta(days=30)
+
+        deletions_24h = 0
+        deletions_30d = 0
+
+        # Read all log files
+        for log_file in log_files:
+            try:
+                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        # Look for deletion lines
+                        if "Deleted:" in line:
+                            # Extract timestamp from log line
+                            # Format: 2026-05-09 10:13:35,010 [INFO] Deleted: ...
+                            try:
+                                timestamp_str = line.split(" [")[0]  # Get timestamp part
+                                # Handle different formats
+                                if "," in timestamp_str:
+                                    # Format: 2026-05-09 10:13:35,010
+                                    log_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S,%f")
+                                else:
+                                    # Format: [2026-05-04 12:11:45]
+                                    timestamp_str = timestamp_str.strip("[]")
+                                    log_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+
+                                if log_time >= last_24h:
+                                    deletions_24h += 1
+                                if log_time >= last_30d:
+                                    deletions_30d += 1
+
+                            except (ValueError, IndexError):
+                                # Skip lines that don't match expected format
+                                continue
+
+            except Exception as e:
+                # Skip files that can't be read
+                continue
+
+        return {
+            "last_24h": deletions_24h,
+            "last_30d": deletions_30d
+        }
+
+    except Exception as e:
+        return {"last_24h": 0, "last_30d": 0}
+
 def save_config(new_config):
     with open(RULES_PATH, "w") as f:
         yaml.safe_dump(new_config, f, default_flow_style=False)
@@ -188,12 +250,14 @@ def dashboard(request: Request, auth=Depends(authenticate)):
     service_status = get_service_status()
     qb_status = get_qb_status()
     recent_logs = get_recent_logs(10)
+    deletion_stats = get_deletion_stats()
 
     template = jinja_env.get_template("dashboard.html")
     html_content = template.render(
         service_status=service_status,
         qb_status=qb_status,
         recent_logs=recent_logs,
+        deletion_stats=deletion_stats,
         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     )
     return HTMLResponse(content=html_content)
