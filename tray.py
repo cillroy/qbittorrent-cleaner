@@ -356,9 +356,9 @@ def status_watcher(icon):
 icon = pystray.Icon(
     "QBCleaner",
     fresh_icon("yellow"),
-    title=f"qBittorrent Cleaner ({status_text()})",
+    title=f"qBittorrent Cleaner (Service: {status_text()} | {web_status_text()})",
     menu=pystray.Menu(
-        item(lambda _: f"Status: {status_text()}", None, enabled=False),
+        item(lambda _: f"Service: {status_text()}", None, enabled=False),
         item(lambda _: f"{web_status_text()}", None, enabled=False),
         item("---", None, enabled=False),  # Separator
         item("Run Cleanup Now", run_cleanup_now),
