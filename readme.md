@@ -229,7 +229,7 @@ The web interface provides remote access to monitor and control the qBittorrent 
 
 - **Dashboard**: View service status, qBittorrent connection, recent torrents, and activity logs
 - **Rules Management**: Add, edit, and delete cleanup rules through a web form
-- **Logs**: View recent application logs with auto-refresh
+- **Logs**: View complete application logs from all archived files with chronological ordering
 - **Settings**: Configure qBittorrent connection, web server settings, and logging preferences
 - **Manual Cleanup**: Trigger cleanup runs on demand
 

@@ -110,11 +110,47 @@ def get_qb_status():
 
 def get_recent_logs(lines=50):
     try:
-        with open(LOG_PATH, "r") as f:
-            logs = f.readlines()[-lines:]
-        return logs
-    except:
-        return ["No logs available"]
+        import glob
+        import os
+
+        # Find all log files (main + archived)
+        log_pattern = os.path.join(BASE_DIR, "qb-cleaner.log*")
+        log_files = glob.glob(log_pattern)
+
+        if not log_files:
+            return ["No log files found"]
+
+        # Sort by modification time (newest first)
+        log_files.sort(key=os.path.getmtime, reverse=True)
+
+        all_lines = []
+
+        # Read from newest files first
+        for log_file in log_files:
+            try:
+                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                    file_lines = f.readlines()
+
+                # Add file separator for archived logs
+                if log_file != LOG_PATH:
+                    filename = os.path.basename(log_file)
+                    all_lines.append(f"\n--- Archived Log: {filename} ---\n")
+
+                # Add all lines from this file
+                all_lines.extend(file_lines)
+
+            except Exception as e:
+                all_lines.append(f"Error reading {os.path.basename(log_file)}: {e}\n")
+                continue
+
+        # Return the most recent lines (from the end of the combined logs)
+        if all_lines:
+            return all_lines[-lines:]
+        else:
+            return ["No logs available"]
+
+    except Exception as e:
+        return [f"Error aggregating logs: {e}"]
 
 def save_config(new_config):
     with open(RULES_PATH, "w") as f:
