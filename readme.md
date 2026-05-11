@@ -105,7 +105,7 @@ Optional (but suggested):
 - `username`
 - `password`
 
-### Example default rule (40 days inactivity, Sonarr/Radarr labels)
+### Example default rule (40 days inactivity, category_0/category_1 labels)
 
 ```yaml
 qbittorrent:
@@ -120,7 +120,7 @@ logging:
 rules:
   - name: "Delete inactive Sonarr/Radarr torrents"
     match:
-      label_in: ["sonarr", "radarr"]
+      label_in: ["category_0", "category_1"]
       last_activity_hours_gt: 960   # 40 days
     action:
       delete_torrent: true
