@@ -102,6 +102,18 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
 # UTILITY FUNCTIONS
 # -------------------------
 
+def _log_file_sort_key(path):
+    basename = os.path.basename(path)
+    if basename == "qb-cleaner.log":
+        return "9999-99-99"
+    return basename.rsplit(".", 1)[-1]
+
+def get_log_files():
+    import glob
+    log_files = glob.glob(os.path.join(BASE_DIR, "qb-cleaner.log*"))
+    log_files.sort(key=_log_file_sort_key)
+    return log_files
+
 def get_service_status():
     try:
         status = win32serviceutil.QueryServiceStatus(SERVICE_NAME)
@@ -133,22 +145,13 @@ def get_qb_status():
 
 def get_recent_logs(lines=50):
     try:
-        import glob
-        import os
-
-        # Find all log files (main + archived)
-        log_pattern = os.path.join(BASE_DIR, "qb-cleaner.log*")
-        log_files = glob.glob(log_pattern)
+        log_files = get_log_files()
 
         if not log_files:
             return ["No log files found"]
 
-        # Sort by modification time (newest first)
-        log_files.sort(key=os.path.getmtime, reverse=True)
-
         all_lines = []
 
-        # Read from newest files first
         for log_file in log_files:
             try:
                 with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
@@ -166,9 +169,9 @@ def get_recent_logs(lines=50):
                 all_lines.append(f"Error reading {os.path.basename(log_file)}: {e}\n")
                 continue
 
-        # Return the most recent lines (from the end of the combined logs)
+        # Return the most recent lines, newest first
         if all_lines:
-            return all_lines[-lines:]
+            return list(reversed(all_lines[-lines:]))
         else:
             return ["No logs available"]
 
@@ -362,23 +365,15 @@ def logs_page(request: Request, auth=Depends(authenticate)):
 @app.get("/download-logs")
 def download_logs(auth=Depends(authenticate)):
     try:
-        import glob
-        import os
         from fastapi.responses import PlainTextResponse
 
-        # Find all log files (main + archived)
-        log_pattern = os.path.join(BASE_DIR, "qb-cleaner.log*")
-        log_files = glob.glob(log_pattern)
+        log_files = get_log_files()
 
         if not log_files:
             return PlainTextResponse("No log files found", status_code=404)
 
-        # Sort by modification time (newest first)
-        log_files.sort(key=os.path.getmtime, reverse=True)
-
         combined_content = []
 
-        # Read from newest files first
         for log_file in log_files:
             try:
                 with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
