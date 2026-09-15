@@ -7,20 +7,18 @@ import servicemanager
 import time
 import os
 import logging
-from logging.handlers import TimedRotatingFileHandler
+
 from plyer import notification
 from cleaner import Cleaner
 from schedule import seconds_until_next_run, record_run
+from logutil import setup_logging
 
 # -------------------------
 # LOGGING SETUP
 # -------------------------
 
-# FIX: Use absolute path so Windows service doesn't write to System32
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH = os.path.join(BASE_DIR, "qb-cleaner.log")
 
-# Load config for logging settings (before creating logger)
 import yaml
 config_path = os.path.join(BASE_DIR, "rules.yaml")
 with open(config_path, "r") as f:
@@ -29,31 +27,21 @@ logging_config = config.get("logging", {})
 max_days = logging_config.get("max_days", 30)
 enable_notifications = logging_config.get("enable_notifications", True)
 
-# Set up logging with rotation
-logger = logging.getLogger("qb_cleaner")
-logger.setLevel(logging.INFO)
+action_logger, schedule_logger = setup_logging(max_days)
 
-# Create handler for file logging with rotation
-handler = TimedRotatingFileHandler(
-    LOG_PATH,
-    when="midnight",
-    interval=1,
-    backupCount=max_days
-)
-handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-logger.addHandler(handler)
-
-# Create handler for Windows Event Log
 class EventLogHandler(logging.Handler):
     def emit(self, record):
         servicemanager.LogInfoMsg(self.format(record))
 
 event_handler = EventLogHandler()
 event_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-logger.addHandler(event_handler)
+action_logger.addHandler(event_handler)
 
 def log(msg):
-    logger.info(msg)
+    action_logger.info(msg)
+
+def slog(msg):
+    schedule_logger.info(msg)
 
 def notify(msg):
     if enable_notifications:
@@ -94,6 +82,7 @@ class QBCleanerService(win32serviceutil.ServiceFramework):
             try:
                 wait_s = seconds_until_next_run()
             except Exception as e:
+                slog(f"Error reading schedule: {e}")
                 log(f"Error reading schedule: {e}")
                 if self._wait(5000):
                     log("Stop event received, exiting service loop")
@@ -115,7 +104,7 @@ class QBCleanerService(win32serviceutil.ServiceFramework):
                 continue
 
             try:
-                cleaner = Cleaner(logger=log, notifier=notify)
+                cleaner = Cleaner(logger=log, schedule_logger=slog, notifier=notify)
             except Exception as e:
                 log(f"Error creating cleaner: {e}")
                 try:

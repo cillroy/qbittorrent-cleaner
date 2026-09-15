@@ -7,8 +7,9 @@ from datetime import datetime
 from qb_api import QBClient
 
 class Cleaner:
-    def __init__(self, config_path="rules.yaml", logger=print, notifier=None):
+    def __init__(self, config_path="rules.yaml", logger=print, schedule_logger=None, notifier=None):
         self.logger = logger
+        self.schedule_logger = schedule_logger if schedule_logger is not None else logger
         self.notifier = notifier
 
         # Resolve rules.yaml relative to this file (fixes Windows service crash)
@@ -105,7 +106,7 @@ class Cleaner:
         self.reload_config()
         deleted = 0
         error = None
-        self.logger("Cleanup run started")
+        self.schedule_logger(f"Cleanup run started (source={source})")
         try:
             torrents = self.client.get_torrents()
             rules = self.config.get("rules") or []
@@ -125,10 +126,15 @@ class Cleaner:
                             if self.notifier:
                                 self.notifier(msg)
 
-            self.logger(f"Cleanup run finished: {deleted} torrent(s) deleted")
+            finished = f"Cleanup run finished: {deleted} torrent(s) deleted (source={source})"
+            self.schedule_logger(finished)
+            if deleted:
+                self.logger(finished)
         except Exception as e:
             error = str(e)
-            self.logger(f"Cleanup run failed: {e}")
+            fail = f"Cleanup run failed: {e} (source={source})"
+            self.schedule_logger(fail)
+            self.logger(fail)
             raise
         finally:
             try:

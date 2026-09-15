@@ -15,10 +15,12 @@ import yaml
 import socket
 from plyer import notification
 from cleaner import Cleaner
+from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
 
 SERVICE_NAME = "QBCleanerService"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH = os.path.join(BASE_DIR, "qb-cleaner.log")
+LOG_PATH = ACTION_LOG
+SCHEDULE_LOG_PATH = SCHEDULE_LOG
 RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
 DEBUG_LOG = os.path.join(BASE_DIR, "tray-debug.log")
 
@@ -58,6 +60,12 @@ def load_config():
     return config
 
 load_config()
+_max_days = 30
+try:
+    _max_days = int((config.get("logging") or {}).get("max_days", 30))
+except (TypeError, ValueError):
+    _max_days = 30
+action_file_logger, schedule_file_logger = setup_logging(_max_days)
 
 def get_web_port():
     load_config()
@@ -371,7 +379,8 @@ def explain_not_elevated(icon, _item=None):
     icon.notify("Restart the tray as Administrator to start/stop the Windows service")
 
 def run_cleanup_now(icon, item):
-    def combined_logger(msg):
+    def action_logger(msg):
+        action_file_logger.info(msg)
         icon.notify(msg)
         if enable_notifications:
             notification.notify(
@@ -380,7 +389,14 @@ def run_cleanup_now(icon, item):
                 app_name="qBittorrent Cleaner"
             )
 
-    cleaner = Cleaner(logger=combined_logger, notifier=combined_logger)
+    def schedule_logger(msg):
+        schedule_file_logger.info(msg)
+
+    cleaner = Cleaner(
+        logger=action_logger,
+        schedule_logger=schedule_logger,
+        notifier=action_logger,
+    )
     cleaner.run_once(source="tray")
     icon.notify("Cleanup executed")
 
@@ -388,7 +404,13 @@ def open_log(icon, item):
     if os.path.exists(LOG_PATH):
         os.startfile(LOG_PATH)
     else:
-        icon.notify("Log file not found")
+        icon.notify("Action log not found yet")
+
+def open_schedule_log(icon, item):
+    if os.path.exists(SCHEDULE_LOG_PATH):
+        os.startfile(SCHEDULE_LOG_PATH)
+    else:
+        icon.notify("Schedule log not found yet")
 
 def open_rules(icon, item):
     if os.path.exists(RULES_PATH):
@@ -454,7 +476,8 @@ def iter_menu():
         item("Open in browser", open_web_interface),
     ))
     yield item("Open", pystray.Menu(
-        item("Log file", open_log),
+        item("Action log", open_log),
+        item("Schedule log", open_schedule_log),
         item("rules.yaml", open_rules),
         item("Install folder", open_folder),
     ))
