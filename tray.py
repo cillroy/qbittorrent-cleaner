@@ -44,6 +44,8 @@ from pystray import MenuItem as item
 from PIL import Image, ImageDraw
 import subprocess
 import os
+import win32api
+import win32con
 import win32serviceutil
 import threading
 import time
@@ -489,25 +491,71 @@ def quit_app(icon, item):
     icon.stop()
 
 
+def restart_tray(icon, item):
+    script = os.path.join(BASE_DIR, "tray.py")
+    python = sys.executable
+    pythonw = python
+    if python.lower().endswith("python.exe"):
+        candidate = python[:-10] + "pythonw.exe"
+        if os.path.isfile(candidate):
+            pythonw = candidate
+    flags = 0
+    if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+        flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+    if hasattr(subprocess, "DETACHED_PROCESS"):
+        flags |= subprocess.DETACHED_PROCESS
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        flags |= subprocess.CREATE_NO_WINDOW
+    try:
+        subprocess.Popen(
+            [pythonw, script],
+            cwd=BASE_DIR,
+            close_fds=True,
+            creationflags=flags,
+        )
+    except Exception as e:
+        notify_now(icon, f"Could not restart tray: {e}")
+        return
+    icon.stop()
+
+
+def _message_box(text, title="qBittorrent Cleaner", flags=None):
+    if flags is None:
+        flags = win32con.MB_OK | win32con.MB_ICONINFORMATION
+    flags |= win32con.MB_SETFOREGROUND | win32con.MB_TOPMOST
+    return win32api.MessageBox(0, text, title, flags)
+
+
 def check_updates(icon, item):
     from update_check import check_for_update
     result = check_for_update(force=True)
     if result.get("update_available"):
-        notify_now(icon, f"Update available: {result['local']} → {result['latest']}")
-        try:
-            import webbrowser
-            if result.get("release_url"):
-                webbrowser.open(result["release_url"])
-        except Exception:
-            pass
+        choice = _message_box(
+            f"A new version is available.\n\n"
+            f"Installed: {result['local']}\n"
+            f"Latest:      {result['latest']}\n\n"
+            f"Yes = install now (UAC)\n"
+            f"No = open the GitHub release\n"
+            f"Cancel = dismiss",
+            "Update available",
+            win32con.MB_YESNOCANCEL | win32con.MB_ICONQUESTION,
+        )
+        if choice == win32con.IDYES:
+            install_github_update(icon, item)
+        elif choice == win32con.IDNO:
+            try:
+                import webbrowser
+                webbrowser.open(result.get("release_url") or "https://github.com/cillroy/qbittorrent-cleaner/releases")
+            except Exception as e:
+                notify_now(icon, f"Could not open GitHub: {e}")
         return
     if result.get("error"):
-        notify_now(icon, result.get("message") or "Could not check for updates")
+        _message_box(result.get("message") or "Could not check for updates", "Update check failed", win32con.MB_OK | win32con.MB_ICONWARNING)
         return
     if result.get("latest"):
-        notify_now(icon, f"Up to date ({result['local']})")
+        _message_box(f"You are up to date.\n\nInstalled: {result['local']}\nLatest:      {result['latest']}")
     else:
-        notify_now(icon, result.get("message") or f"No GitHub releases yet (local {result['local']})")
+        _message_box(result.get("message") or f"No GitHub releases yet.\nInstalled: {result['local']}")
 
 
 def install_github_update(icon, item):
@@ -634,6 +682,7 @@ def iter_menu():
         item("Install folder", open_folder),
     ))
     yield pystray.Menu.SEPARATOR
+    yield item("Restart tray", restart_tray)
     yield item("Quit", quit_app)
 
 
