@@ -131,11 +131,37 @@ def is_elevated():
 # ICON GENERATION
 # -------------------------
 
+_LOGO_PATHS = [
+    os.path.join(BASE_DIR, "static", "logo-32.png"),
+    os.path.join(BASE_DIR, "static", "logo.png"),
+]
+_logo_base = None
+
+
+def _load_logo_base():
+    global _logo_base
+    if _logo_base is not None:
+        return _logo_base
+    for path in _LOGO_PATHS:
+        if os.path.isfile(path):
+            img = Image.open(path).convert("RGBA")
+            _logo_base = img.resize((32, 32), Image.LANCZOS)
+            return _logo_base
+    return None
+
+
 def make_icon(color):
-    # Use 32x32 for better tray icon compatibility
-    img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    # 32x32 tray icon: app logo with a status pip (green/yellow/red).
+    logo = _load_logo_base()
+    if logo is None:
+        img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.ellipse((4, 4, 28, 28), fill=color, outline="black", width=2)
+        return img
+    img = logo.copy()
     d = ImageDraw.Draw(img)
-    d.ellipse((4, 4, 28, 28), fill=color, outline="black", width=2)
+    d.ellipse((19, 19, 31, 31), fill="black")
+    d.ellipse((20, 20, 30, 30), fill=color)
     return img
 
 def fresh_icon(color):
@@ -266,7 +292,11 @@ def _kill_web_processes():
     return killed
 
 
-def start_web_server(icon, item, *, quiet=False):
+def start_web_server(icon, item):
+    return _start_web(icon, quiet=False)
+
+
+def _start_web(icon, quiet=False):
     global web_process
     logging.debug("start_web_server() called")
 
@@ -313,7 +343,11 @@ def start_web_server(icon, item, *, quiet=False):
             notify_now(icon, f"Failed to start web server: {str(e)}")
         return False
 
-def stop_web_server(icon, item, *, quiet=False):
+def stop_web_server(icon, item):
+    return _stop_web(icon, quiet=False)
+
+
+def _stop_web(icon, quiet=False):
     global web_process
     logging.debug("stop_web_server() called")
 
@@ -369,12 +403,12 @@ def stop_web_server(icon, item, *, quiet=False):
 def restart_web_server(icon, item):
     logging.debug("restart_web_server() called")
     if get_web_status() == "Running":
-        if not stop_web_server(icon, item, quiet=True):
+        if not _stop_web(icon, quiet=True):
             notify_now(icon, "Web restart failed — could not stop the old process")
             return
         wait_until(lambda: get_web_status() == "Stopped", timeout=8.0)
 
-    if start_web_server(icon, item, quiet=True):
+    if _start_web(icon, quiet=True):
         notify_now(icon, f"Web restarted — running on :{get_web_port()}")
     else:
         notify_now(icon, "Web restart failed (port not responding)")
