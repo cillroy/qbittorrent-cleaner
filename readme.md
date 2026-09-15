@@ -264,18 +264,11 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 
 # Releases (Azure DevOps → GitHub)
 
-Azure DevOps is the source of truth. The pipeline still mirrors `master` to GitHub `main` on every push. A **GitHub Release** is created only when you push a version tag.
+Azure DevOps is the source of truth. The pipeline mirrors `master` to GitHub `main` on every push. If `VERSION` is new (for example `1.0.0`), it also creates GitHub release `v1.0.0`. Later pushes with the same `VERSION` skip creating another release.
 
-1. Set `VERSION` (for example `1.0.0`) and commit on `master`.
-2. Tag that commit and push the tag:
-
-```bat
-git tag v1.0.0
-git push origin master
-git push origin v1.0.0
-```
-
-3. The pipeline validates, pushes to GitHub, then creates [github.com/cillroy/qbittorrent-cleaner/releases](https://github.com/cillroy/qbittorrent-cleaner/releases).
+1. Set `VERSION` and commit on `master`.
+2. `git push origin master`
+3. The pipeline validates, pushes to GitHub, then creates [github.com/cillroy/qbittorrent-cleaner/releases](https://github.com/cillroy/qbittorrent-cleaner/releases) when that version does not exist yet.
 
 The web UI (dashboard / Help) and tray **Check for updates** compare local `VERSION` to `releases/latest`. They do **not** apply the update. Copy files (not `rules.yaml`) and run `update.cmd`.
 
