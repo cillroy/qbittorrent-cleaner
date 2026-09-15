@@ -12,8 +12,7 @@ def _log_crash(prefix, exc=None):
     try:
         with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
             fh.write(prefix + "\n")
-            if exc is not None:
-                traceback.print_exc(file=fh)
+            traceback.print_exc(file=fh)
             fh.write("\n")
     except OSError:
         pass
