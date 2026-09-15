@@ -22,6 +22,8 @@ from schedule import (
     MAX_INTERVAL_SECONDS,
 )
 from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
+from version import read_local_version
+from update_check import check_for_update
 
 # -------------------------
 # CONFIGURATION
@@ -79,7 +81,7 @@ logger = action_logger
 # FASTAPI SETUP
 # -------------------------
 
-app = FastAPI(title="qBittorrent Cleaner Web", version="1.0.0")
+app = FastAPI(title="qBittorrent Cleaner Web", version=read_local_version())
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/static/logs", StaticFiles(directory=BASE_DIR), name="logs")
 from jinja2 import Environment, FileSystemLoader
@@ -89,6 +91,7 @@ jinja_env.globals.update(
     brand_url="https://cwhateverc.com",
     brand_email="support@cwhateverc.com",
     github_url="https://github.com/cillroy/qbittorrent-cleaner",
+    app_version=read_local_version,
 )
 templates = Jinja2Templates(env=jinja_env)
 
@@ -283,6 +286,7 @@ def dashboard(request: Request, auth=Depends(authenticate)):
     recent_logs = get_recent_logs(10)
     deletion_stats = get_deletion_stats()
     schedule_status = get_schedule_status(load_config(), service_status=service_status)
+    update = check_for_update()
 
     template = jinja_env.get_template("dashboard.html")
     html_content = template.render(
@@ -291,6 +295,7 @@ def dashboard(request: Request, auth=Depends(authenticate)):
         recent_logs=recent_logs,
         deletion_stats=deletion_stats,
         schedule=schedule_status,
+        update=update,
         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     )
     return HTMLResponse(content=html_content)
@@ -486,7 +491,12 @@ def update_schedule(
 @app.get("/help", response_class=HTMLResponse)
 def help_page(request: Request, auth=Depends(authenticate)):
     template = jinja_env.get_template("help.html")
-    return HTMLResponse(content=template.render())
+    return HTMLResponse(content=template.render(update=check_for_update()))
+
+
+@app.get("/api/updates")
+def updates_api(refresh: int = 0, auth=Depends(authenticate)):
+    return check_for_update(force=bool(refresh))
 
 
 @app.get("/settings", response_class=HTMLResponse)

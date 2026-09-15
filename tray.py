@@ -1,5 +1,37 @@
 # qBittorrent Cleaner Tray Application
 
+import os
+import sys
+import traceback
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_CRASH_LOG = os.path.join(_BASE_DIR, "tray-crash.log")
+
+
+def _log_crash(prefix, exc=None):
+    try:
+        with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
+            fh.write(prefix + "\n")
+            if exc is not None:
+                traceback.print_exc(file=fh)
+            fh.write("\n")
+    except OSError:
+        pass
+
+
+def _excepthook(exc_type, exc, tb):
+    try:
+        with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
+            fh.write("unhandled exception\n")
+            traceback.print_exception(exc_type, exc, tb, file=fh)
+            fh.write("\n")
+    except OSError:
+        pass
+    sys.__excepthook__(exc_type, exc, tb)
+
+
+sys.excepthook = _excepthook
+
 import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
@@ -447,6 +479,27 @@ def open_folder(icon, item):
 def quit_app(icon, item):
     icon.stop()
 
+
+def check_updates(icon, item):
+    from update_check import check_for_update
+    result = check_for_update(force=True)
+    if result.get("update_available"):
+        notify_now(icon, f"Update available: {result['local']} → {result['latest']}")
+        try:
+            import webbrowser
+            if result.get("release_url"):
+                webbrowser.open(result["release_url"])
+        except Exception:
+            pass
+        return
+    if result.get("error"):
+        notify_now(icon, result.get("message") or "Could not check for updates")
+        return
+    if result.get("latest"):
+        notify_now(icon, f"Up to date ({result['local']})")
+    else:
+        notify_now(icon, result.get("message") or f"No GitHub releases yet (local {result['local']})")
+
 # -------------------------
 # ICON AUTO-REFRESH THREAD
 # -------------------------
@@ -498,28 +551,33 @@ def wait_until(predicate, timeout=8.0, interval=0.25):
 
 def status_watcher(icon):
     last_key = None
+    time.sleep(1.0)
 
     while True:
-        if not icon._running:
-            break
-        if not icon.visible:
-            time.sleep(0.2)
-            continue
+        try:
+            if not icon._running:
+                break
+            if not icon.visible:
+                time.sleep(0.2)
+                continue
 
-        svc = query_service_status()
-        web = get_web_status()
-        key = (svc, web, overall_status())
+            svc = query_service_status()
+            web = get_web_status()
+            key = (svc, web, overall_status())
 
-        if ENABLE_DEBUG:
-            logging.debug(f"Service={svc} web={web} overall={key[2]} elevated={is_elevated()}")
-
-        if key != last_key:
-            refresh_appearance(icon)
-            last_key = key
             if ENABLE_DEBUG:
-                logging.debug(f"Updated icon to {icon_color_name()}")
+                logging.debug(f"Service={svc} web={web} overall={key[2]} elevated={is_elevated()}")
 
-        time.sleep(1)
+            if key != last_key:
+                refresh_appearance(icon)
+                last_key = key
+                if ENABLE_DEBUG:
+                    logging.debug(f"Updated icon to {icon_color_name()}")
+
+            time.sleep(1)
+        except Exception:
+            _log_crash("status_watcher failed")
+            time.sleep(2)
 
 # -------------------------
 # TRAY ICON SETUP
@@ -533,6 +591,7 @@ def iter_menu():
     yield pystray.Menu.SEPARATOR
     yield item("Open web interface", open_web_interface, default=True)
     yield item("Run cleanup now", run_cleanup_now)
+    yield item("Check for updates", check_updates)
     yield pystray.Menu.SEPARATOR
     yield item("Service", pystray.Menu(
         item("Start", start_service, enabled=_service_stopped),
@@ -564,9 +623,24 @@ icon = pystray.Icon(
 )
 
 def on_icon_ready(icon):
-    icon.visible = True
-    threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
+    try:
+        icon.visible = True
+        threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
+    except Exception:
+        _log_crash("on_icon_ready failed")
+        raise
 
 
 if __name__ == "__main__":
-    icon.run(setup=on_icon_ready)
+    try:
+        with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
+            fh.write(
+                f"start python={sys.executable} file={__file__} cwd={os.getcwd()} "
+                f"elevated={is_elevated()}\n"
+            )
+        icon.run(setup=on_icon_ready)
+        with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
+            fh.write("icon.run() returned (tray stopped)\n")
+    except Exception:
+        _log_crash("icon.run() failed")
+        raise

@@ -6,6 +6,14 @@
 <div class="container">
     <h1>Dashboard</h1>
 
+    {% if update and update.update_available %}
+    <div class="alert alert-info">
+        <strong>Update available:</strong> {{ update.local }} → {{ update.latest }}.
+        Copy the new files (do not overwrite <code>rules.yaml</code>), then run <code>update.cmd</code>.
+        <a href="{{ update.release_url }}" target="_blank" rel="noopener">Open GitHub release</a>
+    </div>
+    {% endif %}
+
     <div class="row">
         <div class="col-md-6">
             <div class="card mb-4">

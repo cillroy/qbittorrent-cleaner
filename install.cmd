@@ -2,21 +2,33 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-:: Windows PowerShell defaults to Restricted on many machines, which
-:: blocks .ps1 files. Bypass is process-only and does not change the
-:: system policy. Unblock-File clears Mark-of-the-Web if this folder
-:: was copied from another PC.
+net session >nul 2>&1
+if not %errorlevel%==0 (
+    if "%*"=="" (
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    ) else (
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+    )
+    exit /b
+)
+
+cd /d "%~dp0"
+
+if not exist "%~dp0install.ps1" (
+    echo install.ps1 not found in "%~dp0"
+    pause
+    exit /b 1
+)
+
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Unblock-File -LiteralPath '%~dp0install.ps1' -ErrorAction SilentlyContinue"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
 set "ERR=%ERRORLEVEL%"
 
-if not "%ERR%"=="0" (
-    echo.
-    echo Command failed with exit code %ERR%.
-    pause
-    exit /b %ERR%
-)
-
 echo.
+if not "%ERR%"=="0" (
+    echo Command failed with exit code %ERR%.
+) else (
+    echo Done.
+)
 pause
-exit /b 0
+exit /b %ERR%
