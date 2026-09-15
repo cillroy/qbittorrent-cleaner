@@ -24,8 +24,9 @@
             <a class="navbar-brand" href="/">
                 <i class="fas fa-broom"></i> qBittorrent Cleaner
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation" aria-expanded="false" title="Toggle navigation">
+                <span class="navbar-toggler-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Toggle navigation</span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav">
@@ -77,8 +78,6 @@
     <footer class="border-top mt-5 py-3 text-muted">
         <div class="container-fluid text-center small">
             Built by <a href="{{ brand_url }}" target="_blank" rel="noopener">{{ brand_name }}</a>
-            &middot;
-            <a href="{{ brand_url }}" target="_blank" rel="noopener">{{ brand_url | replace("https://", "") }}</a>
             &middot;
             <a href="mailto:{{ brand_email }}">{{ brand_email }}</a>
             &middot;
