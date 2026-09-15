@@ -26,14 +26,14 @@
   python.exe to use for pip and the service. Auto-detected if omitted.
 
 .EXAMPLE
-  # From the repo, update production (run in an elevated PowerShell)
-  .\install.ps1 update
+  # From cmd or Explorer (avoids execution-policy errors)
+  install.cmd update
 
 .EXAMPLE
-  .\install.ps1 install -Dest 'C:\qBittorrent Cleaner'
+  powershell.exe -ExecutionPolicy Bypass -File .\install.ps1 update
 
 .EXAMPLE
-  .\install.ps1 update -Python 'C:\Users\culle\AppData\Local\Programs\Python\Python314\python.exe'
+  .\install.ps1 update -Python 'C:\Python314\python.exe'
 #>
 #Requires -Version 5.1
 [CmdletBinding()]
@@ -67,6 +67,7 @@ $CodeFiles = @(
     'QBCleanerTray.xml',
     'readme.md',
     'install.ps1',
+    'install.cmd',
     'update.cmd'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
@@ -445,24 +446,6 @@ function Uninstall-Cleaner([string]$dest) {
     }
 }
 
-# --- elevation (not required for status / dry-run) ---
-$needsAdmin = $Action -in @('install', 'update', 'restart', 'uninstall') -and -not $DryRun
-if ($needsAdmin -and -not (Test-IsAdmin)) {
-    Write-Host "Re-launching elevated..." -ForegroundColor Yellow
-    $argList = @(
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
-        $Action,
-        '-Source', $Source,
-        '-Dest', $Dest
-    )
-    if ($Python) { $argList += @('-Python', $Python) }
-    if ($StartWeb) { $argList += '-StartWeb' }
-    if ($RegisterTrayTask) { $argList += '-RegisterTrayTask' }
-    if ($Purge) { $argList += '-Purge' }
-    $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList $argList
-    exit $proc.ExitCode
-}
-
 if ([string]::IsNullOrWhiteSpace($Source)) {
     if ($PSScriptRoot) {
         $Source = $PSScriptRoot
@@ -480,6 +463,40 @@ if ([string]::IsNullOrWhiteSpace($Dest)) {
     }
 }
 $Dest = [IO.Path]::GetFullPath($Dest)
+
+function ConvertTo-CmdQuoted([string]$value) {
+    if ($null -eq $value) { return '""' }
+    return '"' + ($value -replace '"', '""') + '"'
+}
+
+# --- elevation (not required for status / dry-run) ---
+$needsAdmin = $Action -in @('install', 'update', 'restart', 'uninstall') -and -not $DryRun
+if ($needsAdmin -and -not (Test-IsAdmin)) {
+    Write-Host "Re-launching elevated..." -ForegroundColor Yellow
+    $scriptPath = $PSCommandPath
+    if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+        $scriptPath = $MyInvocation.MyCommand.Path
+    }
+    # One string, all paths quoted. Start-Process -ArgumentList rejects empty
+    # array entries, which is what happened when -Source/-Dest were still blank.
+    $argLine = @(
+        '-NoProfile',
+        '-ExecutionPolicy Bypass',
+        '-File', (ConvertTo-CmdQuoted $scriptPath),
+        $Action,
+        '-Source', (ConvertTo-CmdQuoted $Source),
+        '-Dest', (ConvertTo-CmdQuoted $Dest)
+    )
+    if ($Python) { $argLine += @('-Python', (ConvertTo-CmdQuoted $Python)) }
+    if ($StartWeb) { $argLine += '-StartWeb' }
+    if ($RegisterTrayTask) { $argLine += '-RegisterTrayTask' }
+    if ($Purge) { $argLine += '-Purge' }
+    $argString = [string]::Join(' ', $argLine)
+    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $proc = Start-Process -FilePath $powershell -Verb RunAs -Wait -PassThru -ArgumentList $argString
+    if ($null -eq $proc) { exit 1 }
+    exit $proc.ExitCode
+}
 
 Write-Host ""
 Write-Host "qBittorrent Cleaner $Action" -ForegroundColor Cyan
