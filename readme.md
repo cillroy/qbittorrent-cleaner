@@ -1,292 +1,264 @@
-# qBittorrent Auto Cleaner (Windows Service + Tray Application)
+# qBittorrent Auto Cleaner (Windows Service + Tray + Web)
 
-A fully automated, rule‑driven cleanup system for qBittorrent on Windows.  
-This project includes:
+A rule-driven cleanup system for qBittorrent on Windows. It includes:
 
-- A **Windows Service** that runs cleanup rules on a schedule  
-- A **Tray Application** that lets you monitor and control the service  
-- A **rules.yaml** file defining flexible cleanup logic  
-- Full logging and optional debug mode  
+- A **Windows Service** that runs cleanup rules on a configurable interval
+- A **tray app** to watch status and start/stop the service and web UI
+- A **web UI** for dashboard, rules, scheduler, logs, and settings
+- **`rules.yaml`** for qBittorrent connection, schedule, web auth, and rules
 
-Designed for automation‑heavy setups (Sonarr, Radarr, Lidarr, etc.) where torrents accumulate and need safe, predictable cleanup.
-
----
-
-# ✨ Features
-
-### Windows Service
-- Runs as a **true Windows Service** (pywin32)
-- Uses qBittorrent’s **Web API**
-- Fully configurable via `rules.yaml`
-- Supports **any torrent field** (ratio, state, size, labels, last activity, added time, etc.)
-- Flexible operators:
-  - `*_gt`, `*_lt`, `*_eq`
-  - `label`, `label_in`
-  - `state`, `category`
-  - `ratio_gt`, `ratio_lt`
-  - `size_gt`, `size_lt`
-  - `last_activity_hours_gt`
-  - `added_on_hours_gt`
-  - `tracker_contains`
-- Hot‑reloads configuration every cycle
-- **Automatic log rotation** (daily, configurable retention)
-- **Windows toast notifications** when torrents are deleted
-- Logs actions to `qb-cleaner.log` (with rotation)
-
-### Tray Application
-- Shows **live service status** (Running / Stopped / Unknown / Not Elevated)
-- Color‑coded tray icon:
-  - 🟢 Running  
-  - 🔴 Stopped  
-  - 🟡 Unknown  
-  - 🔵 Not Elevated  
-- Right‑click menu:
-  - **Service Control**: Start / Stop / Restart service
-  - **Web Server Control**: Start / Stop web server, Open web interface
-  - **Manual Operations**: Run cleanup immediately
-  - **File Access**: Open log file, rules.yaml, installation folder
-- Optional debug logging (`python tray.py debug`)
-- Auto‑starts via Scheduled Task (with elevation)
+Built for setups (Sonarr, Radarr, Lidarr, etc.) where torrents pile up and need predictable cleanup.
 
 ---
 
-# 📁 Project Structure
+# Features
+
+### Windows service
+- True Windows Service (pywin32)
+- Talks to qBittorrent’s Web API
+- Reloads `rules.yaml` every cycle
+- Interval comes from `schedule:` in `rules.yaml` (not hardcoded)
+- Daily log rotation, configurable retention
+- Toast notifications on deletions
+- Windows Event Log gets **action** events only (not every schedule tick)
+
+### Tray
+- Color-coded icon (both Windows service **and** web UI):
+  - Green — both running
+  - Yellow — only one running, or status unknown
+  - Red — both stopped
+- Right-click menu: status rows, open web UI, run cleanup, Service / Web / Open submenus
+- `start-tray.cmd` launches it elevated (needed to start/stop the service)
+- Optional debug: `python tray.py debug` → `tray-debug.log`
+- Auto-start via Scheduled Task (`QBCleanerTray.xml`)
+
+### Web UI
+- **Dashboard** — service, qBittorrent, next cleanup, deletion counts
+- **Rules** — add / edit / delete
+- **Scheduler** — next run countdown, last run, interval, pause, run now
+- **Logs** — **Actions** vs **Schedule** tabs
+- **Settings** — qBittorrent, web, logging
+- HTTP basic auth (optional)
+
+### Logs
+| File | Contents |
+| --- | --- |
+| `qb-cleaner.log` | Actions: deletions, errors, service start/stop |
+| `qb-schedule.log` | Every pass (started / finished), including empty runs |
+| `tray-debug.log` | Tray internals, only with `python tray.py debug` |
+
+Rotated daily; keep `logging.max_days` days.
+
+---
+
+# Project layout
 
 ```
 qBittorrent Cleaner/
-│
-├── qb_api.py            # qBittorrent Web API wrapper
-├── cleaner.py           # Rule engine + cleanup logic
-├── service.py           # Windows service wrapper
-├── tray.py              # Tray application
-├── rules.yaml           # User-defined cleanup rules
-├── qb-cleaner.log       # Runtime log (created automatically)
-└── tray-debug.log       # Optional debug log (only when enabled)
+├── install.ps1 / install.cmd / update.cmd   # install or update (elevated)
+├── start-tray.cmd                           # start the tray icon
+├── qb_api.py                                # qBittorrent Web API
+├── cleaner.py                               # rule engine
+├── schedule.py                              # interval + last/next run state
+├── logutil.py                               # action vs schedule loggers
+├── service.py                               # Windows service
+├── tray.py                                  # tray app
+├── web.py                                   # FastAPI web UI
+├── templates/                               # HTML pages
+├── rules.yaml                               # your config (never overwritten by update)
+├── QBCleanerTray.xml                        # optional logon task for the tray
+└── requirements.txt
+```
+
+Runtime files (created as needed, not overwritten by update): `rules.yaml`, `qb-cleaner.log*`, `qb-schedule.log*`, `schedule_state.json`.
+
+---
+
+# Requirements
+
+- Windows 10 or 11
+- Python 3.11+
+- qBittorrent with Web UI enabled
+- `pip install -r requirements.txt`
+
+Packages: pywin32, requests, PyYAML, pystray, Pillow, plyer, FastAPI, uvicorn, Jinja2, python-multipart.
+
+---
+
+# Install / update
+
+Prefer the scripts. They handle execution policy, pip, and the Windows service.
+
+**First install** (elevated):
+
+```bat
+install.cmd
+```
+
+**Later updates** after you copy new code into the install folder (do **not** overwrite prod `rules.yaml`):
+
+```bat
+update.cmd
+```
+
+Or:
+
+```bat
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 update
+```
+
+Useful flags:
+
+```bat
+install.cmd status
+install.cmd update -DryRun
+install.cmd update -Dest "C:\qBittorrent Cleaner"
+install.cmd update -StartWeb
+install.cmd install -RegisterTrayTask
+```
+
+`update.cmd` / `install.ps1 update` will:
+
+1. Stop the service and `web.py`
+2. Backup program files under `.backup\<timestamp>\`
+3. Copy new code **unless** you already copied into the same folder (in-place)
+4. Leave `rules.yaml`, logs, and `schedule_state.json` alone
+5. Insert a `schedule:` block if `rules.yaml` does not have one
+6. `pip install -r requirements.txt`
+7. Start the Windows service
+8. Start the web UI only if it was already running (`-StartWeb` to force it)
+
+Restart the **tray** yourself (`start-tray.cmd` or Quit then start again). The updater does not restart it.
+
+Default dest is `C:\qBittorrent Cleaner` if that already has `service.py`, otherwise the folder you run from.
+
+### Manual service commands
+
+Elevated:
+
+```bat
+python service.py install
+python service.py start
+python service.py stop
+python service.py remove
 ```
 
 ---
 
-# ⚙️ Requirements
+# Tray
 
-- Windows 10 or 11  
-- Python 3.11+  
-- qBittorrent with Web UI enabled  
-- Python packages:
-`pip install pywin32 requests pyyaml pystray pillow plyer`
----
+**Start it:** double-click `start-tray.cmd` (UAC so service control works).
 
-# 🚀 Installation
+Or:
 
-## 1. Clone or extract the project
-Place it somewhere stable, e.g.: 
-`C:\qBittorrent Cleaner`
+```bat
+pythonw tray.py
+python tray.py debug
+```
 
+### Auto-start at logon
 
-## 2. Install Python dependencies
-`pip install -r requirements.txt`
-
-(or install manually as listed above)
-
-## 3. Configure qBittorrent Web UI
-Enable Web UI:
-
-- Tools → Options → Web UI  
-- Set username/password  
-- Ensure the port matches your `rules.yaml`
+1. Import `QBCleanerTray.xml` in Task Scheduler, or `install.cmd install -RegisterTrayTask`
+2. Point the action at `pythonw.exe`, `tray.py`, and the install folder
+3. Run only when the user is logged on, **highest privileges**, your Windows user (not Administrator)
 
 ---
 
-# 🧩 Configuration (rules.yaml)
+# Configuration (`rules.yaml`)
 
-All behavior is controlled through `rules.yaml`.  
-The service reloads this file every cycle.
-
-Optional (but suggested):
-- `username`
-- `password`
-
-### Example default rule (40 days inactivity, Sonarr/Radarr labels)
+The service reloads this every cycle. Update never overwrites an existing file.
 
 ```yaml
 qbittorrent:
   url: "http://127.0.0.1:8080"
-  username: "admin"
-  password: "adminadmin"
+  username: "admin"          # optional
+  password: "adminadmin"     # optional
 
 logging:
-  max_days: 30          # Keep 30 days of logs
-  enable_notifications: true  # Show Windows notifications
+  max_days: 30
+  enable_notifications: true
+
+schedule:
+  enabled: true
+  interval_seconds: 30       # 15–60 minutes is plenty for a 40-day rule
+
+web:
+  port: 8002
+  username: "admin"
+  password: "webadmin"
+  enable_auth: true
 
 rules:
-  - name: "Delete inactive Sonarr/Radarr torrents"
+  - name: "Auto-clean inactive labeled torrents : >=40 days"
     match:
-      label_in: ["sonarr", "radarr"]
-      last_activity_hours_gt: 960   # 40 days
+      category_in: ["radarr", "tv-sonarr"]
+      last_activity_hours_gte: 960
     action:
       delete_torrent: true
       delete_files: true
 ```
 
-## Supported Match Operators
-| Operator | Description |
+Change the interval on the **Scheduler** page; the service picks it up on the next wake (about a second).
+
+### Match operators the engine actually uses
+
+| Operator | Meaning |
 | --- | --- |
-| label | Exact label match |
-| label_in | Match any label in a list |
-| state | qBittorrent state string |
-| ratio_gt / ratio_lt | Ratio comparisons |
-| size_gt / size_lt | Size in bytes |
-| last_activity_hours_gt | Inactivity threshold |
-| added_on_hours_gt | Age threshold |
-| tracker_contains | Match tracker substring |
-| progress_eq | Match progress (0.0–1.0) |
+| `label` / `label_in` | Exact label, or any of a list |
+| `category` / `category_in` | Exact category, or any of a list |
+| `state` | qBittorrent state string |
+| `ratio_gt` | Ratio greater than |
+| `last_activity_hours_gt` / `_gte` | Hours since last activity |
+| `added_on_hours_gt` / `_gte` | Hours since added |
 
-# 🛠 Installing the Windows Service
-Run from an elevated terminal:
-```python
-python service.py install
-python service.py start
-```
+The rules form also lists `ratio_lt`, `size_*`, `tracker_contains`, and `progress_eq`. Those are **not** applied by the engine yet.
 
-To stop:
-```
-python service.py stop
-```
+---
 
-To remove:
-```
-python service.py remove
-```
+# Web UI
 
-Logs are written to:
-`qb-cleaner.log`
-
-# 🖥️ Tray Application Setup
-The tray app provides:
-- Live service status
-- Color‑coded icon
-- Start/Stop/Restart controls
-- Cleanup‑now button
-- Log + rules quick access
-
-## Run manually (for testing)
-`python tray.py`
-
-Enable debug logging
-`python tray.py debug`
-
-Debug logs go to:
-`tray-debug.log`
-
-# 🔁 Auto‑Start the Tray App (Recommended)
-
-The tray app must run as your user, with elevation, and only when logged in.
-
-## 1. Save the provided Scheduled Task XML
-Example: QBCleanerTray.xml
-
-## 2. Import it
-Task Scheduler → Import Task
-
-## 3. Update paths
-    - pythonw.exe
-    - tray.py
-    - Working directory
-## 4. Ensure these settings:
-    - Run only when user is logged on
-    - Run with highest privileges
-    - User account = your actual Windows user (not Administrator)
-
-This ensures:
-- No UAC prompt
-- Tray icon loads correctly
-- Service control works
-- Status updates work
-
-# 🧪 Debugging
-## Enable debug mode:
-```
-python tray.py debug
-```
-
-## Check logs:
-qb-cleaner.log → service activity
-
-tray-debug.log → tray status, icon updates, service queries
-
-## Common issues:
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| Tray icon stays yellow | Explorer not repainting | Fixed in latest tray.py (icon handle refresh) |
-| Tray shows blue icon | Not elevated | Fix Scheduled Task settings |
-| Service not starting | Wrong Web UI credentials | Update rules.yaml |
-| Cleanup not happening | Rule mismatch | Check debug logs |
-
-# 🌐 Web Interface
-
-The web interface provides remote access to monitor and control the qBittorrent Cleaner from any browser.
-
-## Features
-
-- **Dashboard**: View service status, qBittorrent connection, recent torrents, and activity logs
-- **Rules Management**: Add, edit, and delete cleanup rules through a web form
-- **Logs**: View complete application logs from all archived files with chronological ordering
-- **Settings**: Configure qBittorrent connection, web server settings, and logging preferences
-- **Manual Cleanup**: Trigger cleanup runs on demand
-
-## Starting the Web Server
-
-Run the web server (can be done independently of the Windows service):
-```bash
+```bat
 python web.py
 ```
 
-The web interface will be available at: `http://localhost:8082` (configurable in `rules.yaml`)
+Or tray → **Web → Start**, then **Open web interface**.
 
-## Configuration
+URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 
-Web settings are configured in `rules.yaml`:
+---
 
-```yaml
-web:
-  port: 8082                    # Web server port
-  username: "admin"             # Web interface username
-  password: "webadmin"          # Web interface password
-  enable_auth: true             # Enable/disable authentication
+# Debugging
+
+| Log | What |
+| --- | --- |
+| `qb-cleaner.log` | Deletions, errors, service lifecycle |
+| `qb-schedule.log` | Every scheduled/manual pass |
+| `tray-debug.log` | Tray internals (`python tray.py debug`) |
+
+| Symptom | Likely cause | What to do |
+| --- | --- | --- |
+| Tray icon yellow | Only one of service/web is up, or status unknown | Check the menu status rows |
+| Tray icon red | Both service and web stopped | Start them from the tray (elevated) |
+| `.\install.ps1` blocked | Execution policy | Use `update.cmd` / `install.cmd` |
+| Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |
+| Cleanup not happening | Rule mismatch, or schedule paused | Scheduler page + action log |
+| Notifications show old color | Stale tray | Quit tray, run `start-tray.cmd` |
+
+---
+
+# Uninstall
+
+```bat
+install.cmd uninstall
 ```
 
-## Security
+That stops/removes the Windows service (and the tray task if registered). Files stay unless you pass `-Purge`.
 
-- HTTP Basic Authentication (username/password)
-- Configurable credentials
-- Can be disabled for local networks
+Or manually:
 
-## Running as a Service
-
-To run the web server automatically, you can:
-
-1. Create a Windows Scheduled Task to run `python web.py` at startup
-2. Use a process manager like NSSM to create a Windows service for the web server
-3. Run it manually when needed
-
-The web server is completely independent and can run even when the cleanup service is stopped.
-
-# 🧹 Uninstall
-Stop and remove the service:
-```
+```bat
 python service.py stop
 python service.py remove
 ```
 
-Stop the web server (if running):
-```
-# Find the python process running web.py and terminate it
-```
-
-Delete the Scheduled Task:
-
-Task Scheduler → Delete task
-
-Remove the folder:
-```
-C:\qBittorrent Cleaner
-```
+Stop `web.py` if it is running, delete the Scheduled Task, then remove the folder if you want it gone.
