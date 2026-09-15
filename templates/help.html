@@ -7,9 +7,25 @@
     <div class="col-lg-10 col-xl-8">
         <h2 class="mb-3"><i class="fas fa-question-circle"></i> Help</h2>
         <p class="text-muted">
-            qBittorrent Cleaner runs rules on a schedule, deletes matching torrents, and logs what it did.
+            qBittorrent Cleaner v{{ app_version() }} runs rules on a schedule, deletes matching torrents, and logs what it did.
             Use this page for the short version; the GitHub repo has the full readme.
         </p>
+
+        {% if update %}
+        <div class="alert {% if update.update_available %}alert-info{% elif update.error %}alert-warning{% else %}alert-light border{% endif %}">
+            {% if update.update_available %}
+            <strong>Update available:</strong> {{ update.local }} → {{ update.latest }}.
+            <a href="{{ update.release_url }}" target="_blank" rel="noopener">GitHub release</a>.
+            Copy new files (not <code>rules.yaml</code>) and run <code>update.cmd</code>.
+            {% elif update.error %}
+            Could not check for updates: {{ update.message }}
+            {% elif update.latest %}
+            You are on {{ update.local }} (latest GitHub release is {{ update.latest }}).
+            {% else %}
+            You are on {{ update.local }}. {{ update.message or "No GitHub releases published yet." }}
+            {% endif %}
+        </div>
+        {% endif %}
 
         <div class="card mb-4">
             <div class="card-header"><h5 class="mb-0">Links</h5></div>

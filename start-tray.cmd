@@ -2,7 +2,16 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-:: Find pythonw.exe (no console window).
+:: Re-launch this script elevated. Passing pythonw through nested
+:: PowerShell quotes breaks on "C:\qBittorrent Cleaner".
+net session >nul 2>&1
+if not %errorlevel%==0 (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
+cd /d "%~dp0"
+
 set "PYW="
 if exist "%~dp0.venv\Scripts\pythonw.exe" set "PYW=%~dp0.venv\Scripts\pythonw.exe"
 if not defined PYW if exist "%LOCALAPPDATA%\Programs\Python\Python314\pythonw.exe" set "PYW=%LOCALAPPDATA%\Programs\Python\Python314\pythonw.exe"
@@ -16,8 +25,8 @@ if not defined PYW (
 )
 
 if not defined PYW (
-    echo Could not find pythonw.exe.
-    echo Install Python or pass a venv under this folder.
+    echo Could not find pythonw.exe while elevated.
+    echo Install Python for all users, or put a .venv in this folder.
     pause
     exit /b 1
 )
@@ -28,13 +37,9 @@ if not exist "%~dp0tray.py" (
     exit /b 1
 )
 
-:: Elevate so Start/Stop service works, then launch with no leftover console.
-net session >nul 2>&1
-if %errorlevel%==0 (
-    start "" /D "%~dp0" "%PYW%" "%~dp0tray.py"
-    exit /b 0
-)
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Start-Process -FilePath '%PYW%' -ArgumentList '\"%~dp0tray.py\"' -WorkingDirectory '%~dp0' -Verb RunAs"
-exit /b %ERRORLEVEL%
+echo Starting tray with:
+echo   "%PYW%"
+echo   "%~dp0tray.py"
+echo If the icon vanishes, open tray-crash.log in this folder.
+start "" /D "%~dp0" "%PYW%" "%~dp0tray.py"
+exit /b 0

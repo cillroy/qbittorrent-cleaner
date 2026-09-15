@@ -11,7 +11,7 @@ Built for setups (Sonarr, Radarr, Lidarr, etc.) where torrents pile up and need 
 
 **Built by [cwhateverc](https://cwhateverc.com)** · [cwhateverc.com](https://cwhateverc.com) · [support@cwhateverc.com](mailto:support@cwhateverc.com)
 
-Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbittorrent-cleaner)
+Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbittorrent-cleaner) · current version is in `VERSION`
 
 ---
 
@@ -72,10 +72,12 @@ qBittorrent Cleaner/
 ├── templates/                               # HTML pages
 ├── rules.yaml                               # your config (never overwritten by update)
 ├── QBCleanerTray.xml                        # optional logon task for the tray
+├── VERSION                                  # shipped version
+├── version.py / update_check.py             # local version + GitHub latest check
 └── requirements.txt
 ```
 
-Runtime files (created as needed, not overwritten by update): `rules.yaml`, `qb-cleaner.log*`, `qb-schedule.log*`, `schedule_state.json`.
+Runtime files (created as needed, not overwritten by update): `rules.yaml`, `qb-cleaner.log*`, `qb-schedule.log*`, `schedule_state.json`, `update_check_cache.json`.
 
 ---
 
@@ -248,6 +250,27 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |
 | Cleanup not happening | Rule mismatch, or schedule paused | Scheduler page + action log |
 | Notifications show old color | Stale tray | Quit tray, run `start-tray.cmd` |
+
+---
+
+# Releases (Azure DevOps → GitHub)
+
+Azure DevOps is the source of truth. The pipeline still mirrors `master` to GitHub `main` on every push. A **GitHub Release** is created only when you push a version tag.
+
+1. Set `VERSION` (for example `1.0.0`) and commit on `master`.
+2. Tag that commit and push the tag:
+
+```bat
+git tag v1.0.0
+git push origin master
+git push origin v1.0.0
+```
+
+3. The pipeline validates, pushes to GitHub, then creates [github.com/cillroy/qbittorrent-cleaner/releases](https://github.com/cillroy/qbittorrent-cleaner/releases).
+
+The web UI (dashboard / Help) and tray **Check for updates** compare local `VERSION` to `releases/latest`. They do **not** apply the update. Copy files (not `rules.yaml`) and run `update.cmd`.
+
+Do not tag every commit — only builds you want people to install.
 
 ---
 

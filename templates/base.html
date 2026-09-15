@@ -77,7 +77,11 @@
 
     <footer class="border-top mt-5 py-3 text-muted">
         <div class="container-fluid text-center small">
+            qBittorrent Cleaner v{{ app_version() }}
+            &middot;
             Built by <a href="{{ brand_url }}" target="_blank" rel="noopener">{{ brand_name }}</a>
+            &middot;
+            <a href="{{ brand_url }}" target="_blank" rel="noopener">{{ brand_url | replace("https://", "") }}</a>
             &middot;
             <a href="mailto:{{ brand_email }}">{{ brand_email }}</a>
             &middot;

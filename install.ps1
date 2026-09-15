@@ -70,7 +70,10 @@ $CodeFiles = @(
     'install.ps1',
     'install.cmd',
     'update.cmd',
-    'start-tray.cmd'
+    'start-tray.cmd',
+    'VERSION',
+    'version.py',
+    'update_check.py'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
 function Write-Ok($message)   { Write-Host "   OK  $message" -ForegroundColor Green }
@@ -495,8 +498,16 @@ if ($needsAdmin -and -not (Test-IsAdmin)) {
     if ($Purge) { $argLine += '-Purge' }
     $argString = [string]::Join(' ', $argLine)
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $proc = Start-Process -FilePath $powershell -Verb RunAs -Wait -PassThru -ArgumentList $argString
+    # ProcessStartInfo.Arguments keeps quoted paths intact; Start-Process -ArgumentList
+    # drops quotes and dies on "C:\qBittorrent Cleaner".
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $powershell
+    $psi.Arguments = $argString
+    $psi.Verb = 'runas'
+    $psi.UseShellExecute = $true
+    $proc = [System.Diagnostics.Process]::Start($psi)
     if ($null -eq $proc) { exit 1 }
+    $proc.WaitForExit()
     exit $proc.ExitCode
 }
 
