@@ -33,8 +33,8 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
   - Red — both stopped
 - Right-click menu: status rows, open web UI, run cleanup, check for updates, Service / Web (including Restart) / Open submenus
 - `start-tray.cmd` self-elevates (UAC), then starts the tray — needed to start/stop the Windows service
-- Optional debug: `python tray.py debug` → `tray-debug.log`
-- If the icon appears then vanishes: `tray-crash.log` in the install folder
+- Optional debug: `python tray.py debug` → `logs/tray/tray-debug.log`
+- If the icon appears then vanishes: `logs/tray/tray-crash.log`
 - Auto-start via Scheduled Task (`QBCleanerTray.xml`)
 
 ### Web UI
@@ -49,9 +49,9 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 ### Logs
 | File | Contents |
 | --- | --- |
-| `qb-cleaner.log` | Actions: deletions, errors, service start/stop |
-| `qb-schedule.log` | Every pass (started / finished), including empty runs |
-| `tray-debug.log` | Tray internals, only with `python tray.py debug` |
+| `logs/actions/qb-cleaner.log` | Actions: deletions, errors, service start/stop |
+| `logs/schedule/qb-schedule.log` | Every pass (started / finished), including empty runs |
+| `logs/tray/tray-debug.log` | Tray internals, only with `python tray.py debug` |
 
 Rotated daily; keep `logging.max_days` days.
 
@@ -78,7 +78,7 @@ qBittorrent Cleaner/
 └── requirements.txt
 ```
 
-Runtime files (created as needed, not overwritten by update): `rules.yaml`, `qb-cleaner.log*`, `qb-schedule.log*`, `schedule_state.json`, `update_check_cache.json`, `tray-crash.log`.
+Runtime files (created as needed, not overwritten by update): `rules.yaml`, `logs/`, `data/`.
 
 ---
 
@@ -123,6 +123,7 @@ install.cmd update -DryRun
 install.cmd update -Dest "C:\qBittorrent Cleaner"
 install.cmd update -StartWeb
 install.cmd install -RegisterTrayTask
+cleanup.cmd
 ```
 
 `update.cmd` / `install.ps1 update` will:
@@ -241,16 +242,18 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 
 | Log | What |
 | --- | --- |
-| `qb-cleaner.log` | Deletions, errors, service lifecycle |
-| `qb-schedule.log` | Every scheduled/manual pass |
-| `tray-debug.log` | Tray internals (`python tray.py debug`) |
-| `tray-crash.log` | Tray started then died (imports, icon loop) |
+| `logs/actions/qb-cleaner.log` | Deletions, errors, service lifecycle |
+| `logs/schedule/qb-schedule.log` | Every scheduled/manual pass |
+| `logs/tray/tray-debug.log` | Tray internals (`python tray.py debug`) |
+| `logs/tray/tray-crash.log` | Tray started then died (imports, icon loop) |
+| `data/schedule_state.json` | Last/next run timestamps |
+| `data/update_check_cache.json` | Cached GitHub latest-release check |
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
 | Tray icon yellow | Only one of service/web is up, or status unknown | Check the menu status rows |
 | Tray icon red | Both service and web stopped | Start them from the tray (elevated) |
-| Tray flashes then vanishes | Crash after the icon is shown | Open `tray-crash.log` |
+| Tray flashes then vanishes | Crash after the icon is shown | Open `logs/tray/tray-crash.log` |
 | `install.cmd` / `update.cmd` / `start-tray.cmd` close after UAC | Old launchers (path with spaces) | Copy the current `.cmd` files and run again; leave the elevated window open |
 | `.\install.ps1` blocked | Execution policy | Use `update.cmd` / `install.cmd` |
 | Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |

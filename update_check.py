@@ -1,15 +1,12 @@
 # update_check.py - Compare local VERSION to the latest GitHub release.
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
 
+from paths import UPDATE_CACHE_PATH as CACHE_PATH, ensure_runtime_dirs, migrate_legacy_files
 from version import read_local_version, version_tuple, normalize_version
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_PATH = os.path.join(BASE_DIR, "update_check_cache.json")
 GITHUB_OWNER = "cillroy"
 GITHUB_REPO = "qbittorrent-cleaner"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
@@ -46,6 +43,8 @@ def _load_cache():
 
 def _save_cache(result):
     try:
+        migrate_legacy_files()
+        ensure_runtime_dirs()
         with open(CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
             f.write("\n")

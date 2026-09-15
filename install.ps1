@@ -14,6 +14,7 @@
   restart   Bounce the Windows service (and web if it was running).
   status    Show service, web, Python, and schedule info.
   uninstall Stop and remove the Windows service (files are kept).
+  cleanup   Move leftover root logs into logs\ and data\; restart service.
 
 .PARAMETER Source
   Folder that contains the new code. Defaults to this script's directory.
@@ -39,7 +40,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('install', 'update', 'restart', 'status', 'uninstall')]
+    [ValidateSet('install', 'update', 'restart', 'status', 'uninstall', 'cleanup')]
     [string]$Action = 'update',
 
     [string]$Source = '',
@@ -73,7 +74,9 @@ $CodeFiles = @(
     'start-tray.cmd',
     'VERSION',
     'version.py',
-    'update_check.py'
+    'update_check.py',
+    'paths.py',
+    'cleanup.cmd'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
 function Write-Ok($message)   { Write-Host "   OK  $message" -ForegroundColor Green }
@@ -403,7 +406,10 @@ function Show-Status([string]$pythonExe, [string]$dest) {
     $schedPage = Join-Path $dest 'templates\schedule.html'
     Write-Host "  New scheduler files: schedule.py=$(Test-Path $schedulePy)  schedule.html=$(Test-Path $schedPage)"
 
-    $state = Join-Path $dest 'schedule_state.json'
+    $state = Join-Path $dest 'data\schedule_state.json'
+    if (-not (Test-Path -LiteralPath $state)) {
+        $state = Join-Path $dest 'schedule_state.json'
+    }
     if (Test-Path -LiteralPath $state) {
         Write-Host "  State:   $state"
         Get-Content -LiteralPath $state -Raw
@@ -475,7 +481,7 @@ function ConvertTo-CmdQuoted([string]$value) {
 }
 
 # --- elevation (not required for status / dry-run) ---
-$needsAdmin = $Action -in @('install', 'update', 'restart', 'uninstall') -and -not $DryRun
+$needsAdmin = $Action -in @('install', 'update', 'restart', 'uninstall', 'cleanup') -and -not $DryRun
 if ($needsAdmin -and -not (Test-IsAdmin)) {
     Write-Host "Re-launching elevated..." -ForegroundColor Yellow
     $scriptPath = $PSCommandPath
@@ -540,6 +546,30 @@ switch ($Action) {
         if ($StartWeb -or $webWasRunning) { Start-CleanerWeb $pythonExe $Dest }
         Show-Status $pythonExe $Dest
         Write-Warn "Restart the tray app (Quit, then run it again) if you also updated tray.py"
+    }
+    'cleanup' {
+        $port = Get-WebPort (Join-Path $Dest 'rules.yaml')
+        $webWasRunning = Test-PortOpen $port
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        $svcWasRunning = $svc -and $svc.Status -eq 'Running'
+        Write-Step "Stopping writers so log files can be moved"
+        Stop-CleanerWeb $Dest | Out-Null
+        Stop-CleanerService
+        Write-Step "Moving leftover root logs into logs\\ and data\\"
+        if ($DryRun) {
+            Write-Info "Would run: $pythonExe paths.py"
+        } else {
+            Push-Location $Dest
+            try {
+                & $pythonExe 'paths.py'
+            } finally {
+                Pop-Location
+            }
+        }
+        if ($svcWasRunning) { Start-CleanerService $pythonExe $Dest }
+        if ($StartWeb -or $webWasRunning) { Start-CleanerWeb $pythonExe $Dest }
+        Write-Ok "Root cleanup finished"
+        Show-Status $pythonExe $Dest
     }
     'uninstall' {
         Uninstall-Cleaner $Dest
