@@ -84,6 +84,12 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/static/logs", StaticFiles(directory=BASE_DIR), name="logs")
 from jinja2 import Environment, FileSystemLoader
 jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), cache_size=0)
+jinja_env.globals.update(
+    brand_name="cwhateverc",
+    brand_url="https://cwhateverc.com",
+    brand_email="support@cwhateverc.com",
+    github_url="https://github.com/cillroy/qbittorrent-cleaner",
+)
 templates = Jinja2Templates(env=jinja_env)
 
 security = HTTPBasic()
@@ -475,6 +481,12 @@ def update_schedule(
     apply_interval_change(seconds)
 
     return RedirectResponse(url="/schedule?saved=1", status_code=303)
+
+
+@app.get("/help", response_class=HTMLResponse)
+def help_page(request: Request, auth=Depends(authenticate)):
+    template = jinja_env.get_template("help.html")
+    return HTMLResponse(content=template.render())
 
 
 @app.get("/settings", response_class=HTMLResponse)

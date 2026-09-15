@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Help - qBittorrent Cleaner{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 col-xl-8">
+        <h2 class="mb-3"><i class="fas fa-question-circle"></i> Help</h2>
+        <p class="text-muted">
+            qBittorrent Cleaner runs rules on a schedule, deletes matching torrents, and logs what it did.
+            Use this page for the short version; the GitHub repo has the full readme.
+        </p>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Links</h5></div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <i class="fas fa-globe me-2"></i>
+                        Built by <a href="{{ brand_url }}" target="_blank" rel="noopener">{{ brand_name }}</a>
+                        &mdash; <a href="{{ brand_url }}" target="_blank" rel="noopener">{{ brand_url | replace("https://", "") }}</a>
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-envelope me-2"></i>
+                        Support: <a href="mailto:{{ brand_email }}">{{ brand_email }}</a>
+                    </li>
+                    <li>
+                        <i class="fab fa-github me-2"></i>
+                        Source and readme:
+                        <a href="{{ github_url }}" target="_blank" rel="noopener">{{ github_url }}</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Pages</h5></div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li><a href="/">Dashboard</a> — service, qBittorrent, next cleanup, deletion counts</li>
+                    <li><a href="/rules">Rules</a> — add as many rules as you want; all run on the same schedule</li>
+                    <li><a href="/schedule">Scheduler</a> — interval, next/last run, pause, run now</li>
+                    <li><a href="/logs">Logs</a> — Actions (deletes/errors) vs Schedule (every pass)</li>
+                    <li><a href="/settings">Settings</a> — qBittorrent URL, web login, log retention</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Rules that actually match</h5></div>
+            <div class="card-body">
+                <p>The add/edit form lists extra operators. Only these are applied by the engine today:</p>
+                <ul>
+                    <li><code>label</code> / <code>label_in</code></li>
+                    <li><code>category</code> / <code>category_in</code></li>
+                    <li><code>state</code></li>
+                    <li><code>ratio_gt</code></li>
+                    <li><code>last_activity_hours_gt</code> / <code>last_activity_hours_gte</code></li>
+                    <li><code>added_on_hours_gt</code> / <code>added_on_hours_gte</code></li>
+                </ul>
+                <p class="mb-0 text-muted">
+                    <code>ratio_lt</code>, <code>size_*</code>, <code>tracker_contains</code>, and <code>progress_eq</code>
+                    are shown in the form but are not evaluated yet.
+                </p>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Logs</h5></div>
+            <div class="card-body">
+                <p><strong>Actions</strong> (<code>qb-cleaner.log</code>) — deletions, errors, service start/stop.</p>
+                <p class="mb-0"><strong>Schedule</strong> (<code>qb-schedule.log</code>) — every run started/finished, including empty passes.</p>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Tray icon</h5></div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>Green — Windows service and web UI both running</li>
+                    <li>Yellow — only one is up, or status unknown</li>
+                    <li>Red — both stopped</li>
+                </ul>
+                <p class="mt-3 mb-0">
+                    Start the tray with <code>start-tray.cmd</code> (elevated) so Start/Stop service works.
+                    After an update, quit the tray and start it again.
+                </p>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Install and update</h5></div>
+            <div class="card-body">
+                <p>From the install folder, in an elevated prompt if UAC appears:</p>
+                <pre class="mb-2">install.cmd
+update.cmd
+start-tray.cmd</pre>
+                <p class="mb-0">
+                    Update does not overwrite <code>rules.yaml</code>, logs, or <code>schedule_state.json</code>.
+                    Do not copy a repo <code>rules.yaml</code> over production.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -9,6 +9,10 @@ A rule-driven cleanup system for qBittorrent on Windows. It includes:
 
 Built for setups (Sonarr, Radarr, Lidarr, etc.) where torrents pile up and need predictable cleanup.
 
+**Built by [cwhateverc](https://cwhateverc.com)** · [cwhateverc.com](https://cwhateverc.com) · [support@cwhateverc.com](mailto:support@cwhateverc.com)
+
+Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbittorrent-cleaner)
+
 ---
 
 # Features
@@ -38,6 +42,7 @@ Built for setups (Sonarr, Radarr, Lidarr, etc.) where torrents pile up and need 
 - **Scheduler** — next run countdown, last run, interval, pause, run now
 - **Logs** — **Actions** vs **Schedule** tabs
 - **Settings** — qBittorrent, web, logging
+- **Help** — short in-app guide, support contacts, GitHub
 - HTTP basic auth (optional)
 
 ### Logs
