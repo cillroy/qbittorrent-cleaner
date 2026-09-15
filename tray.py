@@ -223,7 +223,7 @@ def _kill_web_processes():
     return killed
 
 
-def start_web_server(icon, item):
+def start_web_server(icon, item, quiet=False):
     global web_process
     logging.debug("start_web_server() called")
 
@@ -232,14 +232,14 @@ def start_web_server(icon, item):
 
     if current_status == "Running":
         logging.debug("Web server already running, skipping start")
-        notify_now(icon, f"Web already running on :{get_web_port()}")
-        return
+        if not quiet:
+            notify_now(icon, f"Web already running on :{get_web_port()}")
+        return True
 
     try:
         logging.debug(f"Starting web server subprocess with: {sys.executable} web.py")
         logging.debug(f"Working directory: {BASE_DIR}")
 
-        # Start web server as subprocess
         web_process = subprocess.Popen(
             [sys.executable, "web.py"],
             cwd=BASE_DIR,
@@ -256,15 +256,21 @@ def start_web_server(icon, item):
 
         if final_status == "Running":
             logging.debug("Web server start successful")
-            notify_now(icon, f"Web started — running on :{get_web_port()}")
-        else:
-            logging.debug("Web server start failed - port not responding")
+            if not quiet:
+                notify_now(icon, f"Web started — running on :{get_web_port()}")
+            return True
+
+        logging.debug("Web server start failed - port not responding")
+        if not quiet:
             notify_now(icon, "Web failed to start (port not responding)")
+        return False
     except Exception as e:
         logging.debug(f"Exception during web server start: {e}")
-        notify_now(icon, f"Failed to start web server: {str(e)}")
+        if not quiet:
+            notify_now(icon, f"Failed to start web server: {str(e)}")
+        return False
 
-def stop_web_server(icon, item):
+def stop_web_server(icon, item, quiet=False):
     global web_process
     logging.debug("stop_web_server() called")
 
@@ -273,15 +279,15 @@ def stop_web_server(icon, item):
 
     if current_status == "Stopped":
         logging.debug("Web server already stopped, skipping stop")
-        notify_now(icon, "Web is already stopped")
-        return
+        if not quiet:
+            notify_now(icon, "Web is already stopped")
+        return True
 
     try:
         logging.debug(f"Web process object: {web_process}")
         if web_process:
             logging.debug(f"Web process PID: {web_process.pid}, poll status: {web_process.poll()}")
 
-        # Try to terminate the process gracefully first
         if web_process and web_process.poll() is None:
             logging.debug("Terminating web server process...")
             web_process.terminate()
@@ -302,13 +308,33 @@ def stop_web_server(icon, item):
 
         if final_status == "Stopped":
             logging.debug("Web server stop successful")
-            notify_now(icon, "Web stopped")
-        else:
-            logging.debug("Web server stop may have failed - still responding on port")
+            if not quiet:
+                notify_now(icon, "Web stopped")
+            return True
+
+        logging.debug("Web server stop may have failed - still responding on port")
+        if not quiet:
             notify_now(icon, "Web may still be running")
+        return False
     except Exception as e:
         logging.debug(f"Exception during web server stop: {e}")
-        notify_now(icon, f"Error stopping web server: {str(e)}")
+        if not quiet:
+            notify_now(icon, f"Error stopping web server: {str(e)}")
+        return False
+
+
+def restart_web_server(icon, item):
+    logging.debug("restart_web_server() called")
+    if get_web_status() == "Running":
+        if not stop_web_server(icon, item, quiet=True):
+            notify_now(icon, "Web restart failed — could not stop the old process")
+            return
+        wait_until(lambda: get_web_status() == "Stopped", timeout=8.0)
+
+    if start_web_server(icon, item, quiet=True):
+        notify_now(icon, f"Web restarted — running on :{get_web_port()}")
+    else:
+        notify_now(icon, "Web restart failed (port not responding)")
 
 def open_web_interface(icon, item):
     logging.debug("open_web_interface() called")
@@ -516,6 +542,7 @@ def iter_menu():
     yield item("Web", pystray.Menu(
         item("Start", start_web_server, enabled=_web_stopped),
         item("Stop", stop_web_server, enabled=_web_running),
+        item("Restart", restart_web_server, enabled=_web_running),
         pystray.Menu.SEPARATOR,
         item("Open in browser", open_web_interface),
     ))
