@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from paths import BASE_DIR, SCHEDULE_STATE_PATH as STATE_PATH, ensure_runtime_dirs, migrate_legacy_files
+from paths import BASE_DIR, SCHEDULE_STATE_PATH as STATE_PATH, ensure_runtime_dirs
 
 RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
 
@@ -43,7 +43,7 @@ def load_schedule_config(config=None):
 
 
 def load_state():
-    migrate_legacy_files()
+    ensure_runtime_dirs()
     try:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
