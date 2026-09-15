@@ -5,7 +5,7 @@ import time
 import urllib.error
 import urllib.request
 
-from paths import UPDATE_CACHE_PATH as CACHE_PATH, ensure_runtime_dirs, migrate_legacy_files
+from paths import UPDATE_CACHE_PATH as CACHE_PATH, ensure_runtime_dirs
 from version import read_local_version, version_tuple, normalize_version
 GITHUB_OWNER = "cillroy"
 GITHUB_REPO = "qbittorrent-cleaner"
@@ -43,7 +43,6 @@ def _load_cache():
 
 def _save_cache(result):
     try:
-        migrate_legacy_files()
         ensure_runtime_dirs()
         with open(CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)

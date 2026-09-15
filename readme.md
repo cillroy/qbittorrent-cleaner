@@ -123,7 +123,7 @@ install.cmd update -DryRun
 install.cmd update -Dest "C:\qBittorrent Cleaner"
 install.cmd update -StartWeb
 install.cmd install -RegisterTrayTask
-cleanup.cmd
+cleanup.cmd          # organize leftover root logs (needs paths.py)
 ```
 
 `update.cmd` / `install.ps1 update` will:
