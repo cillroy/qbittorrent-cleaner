@@ -57,7 +57,7 @@ import socket
 from plyer import notification
 from cleaner import Cleaner
 from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
-from paths import TRAY_DEBUG_LOG
+from paths import TRAY_DEBUG_LOG, UPDATE_LOG
 
 SERVICE_NAME = "QBCleanerService"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -478,6 +478,12 @@ def open_schedule_log(icon, item):
     else:
         icon.notify("Schedule log not found yet")
 
+def open_update_log(icon, item):
+    if os.path.exists(UPDATE_LOG):
+        os.startfile(UPDATE_LOG)
+    else:
+        icon.notify("Update log not found yet")
+
 def open_rules(icon, item):
     if os.path.exists(RULES_PATH):
         os.startfile(RULES_PATH)
@@ -678,6 +684,7 @@ def iter_menu():
     yield item("Open", pystray.Menu(
         item("Action log", open_log),
         item("Schedule log", open_schedule_log),
+        item("Update log", open_update_log),
         item("rules.yaml", open_rules),
         item("Install folder", open_folder),
     ))

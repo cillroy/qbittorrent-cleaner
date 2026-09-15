@@ -37,17 +37,30 @@ if not defined PY (
     exit /b 1
 )
 
+if not exist "%~dp0logs\update" mkdir "%~dp0logs\update"
+set "UPDLOG=%~dp0logs\update\self-update.log"
+echo.>> "%UPDLOG%"
+echo ===== %DATE% %TIME% update-from-github.cmd =====>> "%UPDLOG%"
+echo Using "%PY%">> "%UPDLOG%"
+echo Dest "%~dp0">> "%UPDLOG%"
+
+set "DEST=%~dp0"
+if "%DEST:~-1%"=="\" set "DEST=%DEST:~0,-1%"
+
 echo Using "%PY%"
-echo Downloading latest GitHub release and installing into "%~dp0"
+echo Downloading latest GitHub release and installing into "%DEST%"
+echo Log: "%UPDLOG%"
 echo.
-"%PY%" "%~dp0self_update.py" --apply --dest "%~dp0" --python "%PY%" --start-web %*
+"%PY%" "%~dp0self_update.py" --apply --dest "%DEST%" --python "%PY%" --start-web
 set "ERR=%ERRORLEVEL%"
 
 echo.
 if not "%ERR%"=="0" (
     echo GitHub update failed with exit code %ERR%.
+    echo See "%UPDLOG%"
 ) else (
-    echo GitHub update finished. Restart the tray with start-tray.cmd.
+    echo GitHub update finished. Web UI should be starting. Restart the tray with start-tray.cmd.
+    echo Log: "%UPDLOG%"
 )
 pause
 exit /b %ERR%
