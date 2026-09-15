@@ -509,6 +509,18 @@ def check_updates(icon, item):
     else:
         notify_now(icon, result.get("message") or f"No GitHub releases yet (local {result['local']})")
 
+
+def install_github_update(icon, item):
+    cmd = os.path.join(BASE_DIR, "update-from-github.cmd")
+    if not os.path.isfile(cmd):
+        notify_now(icon, "update-from-github.cmd is missing from the install folder")
+        return
+    try:
+        subprocess.Popen(["cmd.exe", "/c", cmd], cwd=BASE_DIR)
+        notify_now(icon, "Starting GitHub update — accept UAC if prompted")
+    except Exception as e:
+        notify_now(icon, f"Could not start updater: {e}")
+
 # -------------------------
 # ICON AUTO-REFRESH THREAD
 # -------------------------
@@ -601,6 +613,7 @@ def iter_menu():
     yield item("Open web interface", open_web_interface, default=True)
     yield item("Run cleanup now", run_cleanup_now)
     yield item("Check for updates", check_updates)
+    yield item("Install GitHub update", install_github_update)
     yield pystray.Menu.SEPARATOR
     yield item("Service", pystray.Menu(
         item("Start", start_service, enabled=_service_stopped),

@@ -270,7 +270,13 @@ Azure DevOps is the source of truth. The pipeline mirrors `master` to GitHub `ma
 2. `git push origin master`
 3. The pipeline validates, pushes to GitHub, then creates [github.com/cillroy/qbittorrent-cleaner/releases](https://github.com/cillroy/qbittorrent-cleaner/releases) when that version does not exist yet.
 
-The web UI (dashboard / Help) and tray **Check for updates** compare local `VERSION` to `releases/latest`. They do **not** apply the update. Copy files (not `rules.yaml`) and run `update.cmd`.
+The web UI and tray compare local `VERSION` to GitHub `releases/latest`. To apply:
+
+```bat
+update-from-github.cmd
+```
+
+That downloads the release zip, runs `install.ps1 update` from it, and leaves `rules.yaml`, `logs\`, and `data\` alone. Tray **Install GitHub update** and Dashboard **Install now** start the same script (UAC). Restart the tray afterward.
 
 Do not tag every commit — only builds you want people to install.
 

@@ -22,6 +22,8 @@ def _empty_result(local, **extra):
         "release_url": RELEASES_PAGE,
         "name": None,
         "notes": "",
+        "zipball_url": None,
+        "tag_name": None,
         "checked_at": time.time(),
         "error": False,
         "message": "",
@@ -99,13 +101,16 @@ def check_for_update(force=False, timeout=8):
             message=f"Could not reach GitHub: {exc}",
         )
 
-    latest = normalize_version(payload.get("tag_name") or "")
+    tag_name = payload.get("tag_name") or ""
+    latest = normalize_version(tag_name)
     result = _empty_result(
         local,
         latest=latest or None,
+        tag_name=tag_name or None,
+        zipball_url=payload.get("zipball_url"),
         update_available=bool(latest) and version_tuple(latest) > version_tuple(local),
         release_url=payload.get("html_url") or RELEASES_PAGE,
-        name=payload.get("name") or payload.get("tag_name"),
+        name=payload.get("name") or tag_name,
         notes=payload.get("body") or "",
         message="",
     )
