@@ -10,6 +10,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 from plyer import notification
 from cleaner import Cleaner
+from schedule import seconds_until_next_run, record_run
 
 # -------------------------
 # LOGGING SETUP
@@ -72,13 +73,14 @@ class QBCleanerService(win32serviceutil.ServiceFramework):
         super().__init__(args)
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
 
-        # Pass logger and notifier into Cleaner
-        self.cleaner = Cleaner(logger=log, notifier=notify)
-
     def SvcStop(self):
         log("Service stop requested")
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.stop_event)
+
+    def _wait(self, timeout_ms):
+        rc = win32event.WaitForSingleObject(self.stop_event, int(timeout_ms))
+        return rc == win32event.WAIT_OBJECT_0
 
     def SvcDoRun(self):
         log("QBCleanerService starting...")
@@ -89,15 +91,51 @@ class QBCleanerService(win32serviceutil.ServiceFramework):
         log("QBCleanerService started")
 
         while True:
-            rc = win32event.WaitForSingleObject(self.stop_event, 30000)
-            if rc == win32event.WAIT_OBJECT_0:
-                log("Stop event received, exiting service loop")
-                break
+            try:
+                wait_s = seconds_until_next_run()
+            except Exception as e:
+                log(f"Error reading schedule: {e}")
+                if self._wait(5000):
+                    log("Stop event received, exiting service loop")
+                    break
+                continue
+
+            if wait_s is None:
+                # Schedule is paused
+                if self._wait(1000):
+                    log("Stop event received, exiting service loop")
+                    break
+                continue
+
+            if wait_s > 0:
+                timeout_ms = min(max(int(wait_s * 1000), 50), 1000)
+                if self._wait(timeout_ms):
+                    log("Stop event received, exiting service loop")
+                    break
+                continue
 
             try:
-                self.cleaner.run()
+                cleaner = Cleaner(logger=log, notifier=notify)
+            except Exception as e:
+                log(f"Error creating cleaner: {e}")
+                try:
+                    record_run(source="service", deleted=0, error=str(e), scheduled=True)
+                except Exception:
+                    pass
+                if self._wait(5000):
+                    log("Stop event received, exiting service loop")
+                    break
+                continue
+
+            try:
+                cleaner.run(source="service")
             except Exception as e:
                 log(f"Error during cleaner run: {e}")
+
+            # Always yield so a failed state write cannot tight-loop
+            if self._wait(1000):
+                log("Stop event received, exiting service loop")
+                break
 
 
 if __name__ == "__main__":

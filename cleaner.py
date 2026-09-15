@@ -13,20 +13,20 @@ class Cleaner:
 
         # Resolve rules.yaml relative to this file (fixes Windows service crash)
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(base_dir, config_path)
+        self.config_path = os.path.join(base_dir, config_path)
+        self.config = None
+        self.client = None
+        self.reload_config()
 
-        with open(config_path, "r") as f:
-            self.config = yaml.safe_load(f)
+    def reload_config(self):
+        with open(self.config_path, "r", encoding="utf-8") as f:
+            self.config = yaml.safe_load(f) or {}
 
         qb = self.config["qbittorrent"]
-
-        username = qb.get("username")
-        password = qb.get("password")
-
         self.client = QBClient(
             qb["url"],
-            username=username,
-            password=password
+            username=qb.get("username"),
+            password=qb.get("password"),
         )
 
     def hours_since(self, unix_timestamp):
@@ -99,23 +99,49 @@ class Cleaner:
 
         return True
 
-    def run(self):
-        torrents = self.client.get_torrents()
+    def run(self, source="service"):
+        from schedule import load_schedule_config, record_run
 
-        for t in torrents:
-            for rule in self.config["rules"]:
-                if self.match_rule(t, rule):
-                    action = rule["action"]
-                    if action.get("delete_torrent"):
-                        self.client.delete(
-                            t["hash"],
-                            action.get("delete_files", False)
-                        )
-                        msg = f"Deleted: {t['name']} via rule {rule['name']}"
-                        self.logger(msg)
-                        if self.notifier:
-                            self.notifier(msg)
+        self.reload_config()
+        deleted = 0
+        error = None
+        self.logger("Cleanup run started")
+        try:
+            torrents = self.client.get_torrents()
+            rules = self.config.get("rules") or []
 
-    # Wrapper for manual testing
-    def run_once(self):
-        self.run()
+            for t in torrents:
+                for rule in rules:
+                    if self.match_rule(t, rule):
+                        action = rule.get("action") or {}
+                        if action.get("delete_torrent"):
+                            self.client.delete(
+                                t["hash"],
+                                action.get("delete_files", False)
+                            )
+                            deleted += 1
+                            msg = f"Deleted: {t['name']} via rule {rule['name']}"
+                            self.logger(msg)
+                            if self.notifier:
+                                self.notifier(msg)
+
+            self.logger(f"Cleanup run finished: {deleted} torrent(s) deleted")
+        except Exception as e:
+            error = str(e)
+            self.logger(f"Cleanup run failed: {e}")
+            raise
+        finally:
+            try:
+                interval = load_schedule_config(self.config)["interval_seconds"]
+                record_run(
+                    source=source,
+                    deleted=deleted,
+                    error=error,
+                    scheduled=(source == "service"),
+                    interval_seconds=interval,
+                )
+            except Exception as e:
+                self.logger(f"Failed to update schedule state: {e}")
+
+    def run_once(self, source="manual"):
+        self.run(source=source)

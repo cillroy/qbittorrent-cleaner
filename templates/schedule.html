@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Scheduler - qBittorrent Cleaner{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-clock"></i> Scheduler</h2>
+            <button class="btn btn-outline-danger" id="runNowBtn" onclick="runNow()">
+                <i class="fas fa-play"></i> Run cleanup now
+            </button>
+        </div>
+    </div>
+</div>
+
+{% if saved %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    Schedule saved. The Windows service picks up the new interval on its next wake (within a second).
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div id="runMessage"></div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Next run</h5>
+            </div>
+            <div class="card-body text-center">
+                <p class="text-muted mb-1" id="nextStatusLabel">
+                    {% if not schedule.enabled %}
+                    Schedule is paused
+                    {% elif schedule.service_status != "Running" %}
+                    Service is {{ schedule.service_status|lower }} — run will wait until it is started
+                    {% elif schedule.overdue %}
+                    Due now
+                    {% else %}
+                    Next cleanup in
+                    {% endif %}
+                </p>
+                <div class="display-4 fw-bold" id="countdown">
+                    {% if not schedule.enabled %}
+                    Paused
+                    {% elif schedule.overdue %}
+                    Due now
+                    {% elif schedule.seconds_until_next is not none %}
+                    —
+                    {% else %}
+                    —
+                    {% endif %}
+                </div>
+                <p class="mt-3 mb-0">
+                    <strong>At:</strong>
+                    <span id="nextRunAt">{{ schedule.next_run_at or "not scheduled" }}</span>
+                </p>
+                <p class="mb-0">
+                    <strong>Every:</strong>
+                    <span id="intervalLabel">{{ schedule.interval_label }}</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Last run</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>When:</strong> <span id="lastRunAt">{{ schedule.last_run_at or "never" }}</span></p>
+                <p><strong>Triggered by:</strong> <span id="lastRunSource">{{ schedule.last_run_source_label }}</span></p>
+                <p><strong>Torrents deleted:</strong> <span id="lastRunDeleted">{{ schedule.last_run_deleted }}</span></p>
+                <p class="mb-0" id="lastRunErrorWrap" {% if not schedule.last_run_error %}style="display:none"{% endif %}>
+                    <strong>Error:</strong>
+                    <span class="text-danger" id="lastRunError">{{ schedule.last_run_error }}</span>
+                </p>
+                <p class="mb-0 text-muted" id="lastRunOkWrap" {% if schedule.last_run_error %}style="display:none"{% endif %}>
+                    {% if schedule.last_run_at %}Completed without error.{% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Interval</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="/schedule">
+                    <div class="mb-3 form-check">
+                        <input class="form-check-input" type="checkbox" id="enabled" name="enabled" value="on"
+                               {% if schedule.enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="enabled">Enable scheduled runs</label>
+                    </div>
+
+                    <label class="form-label" for="interval_value">Run all rules every</label>
+                    <div class="input-group mb-3">
+                        <input type="number" class="form-control" id="interval_value" name="interval_value"
+                               min="1" value="{{ schedule.interval_value }}" required>
+                        <select class="form-select" id="interval_unit" name="interval_unit">
+                            <option value="seconds" {% if schedule.interval_unit == "seconds" %}selected{% endif %}>seconds</option>
+                            <option value="minutes" {% if schedule.interval_unit == "minutes" %}selected{% endif %}>minutes</option>
+                            <option value="hours" {% if schedule.interval_unit == "hours" %}selected{% endif %}>hours</option>
+                        </select>
+                    </div>
+                    <div class="form-text mb-3">
+                        Minimum {{ schedule.min_interval_seconds }} seconds, maximum 7 days.
+                        The service currently defaults to 30 seconds; 15–60 minutes is plenty for a 40-day inactivity rule.
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save schedule
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Upcoming runs</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Service:
+                    <span id="serviceStatus" class="{% if schedule.service_status == 'Running' %}status-running{% elif schedule.service_status == 'Stopped' %}status-stopped{% else %}status-unknown{% endif %}">
+                        {{ schedule.service_status }}
+                    </span>
+                </p>
+                <ul class="list-group" id="upcomingList">
+                    {% if schedule.upcoming %}
+                        {% for run in schedule.upcoming %}
+                        <li class="list-group-item">{{ run }}</li>
+                        {% endfor %}
+                    {% else %}
+                        <li class="list-group-item text-muted">No upcoming runs while the schedule is paused.</li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const initial = {{ schedule|tojson }};
+let secondsUntil = initial.seconds_until_next;
+let enabled = initial.enabled;
+let serviceStatus = initial.service_status;
+let overdue = initial.overdue;
+
+function formatDuration(total) {
+    if (total === null || total === undefined) return "—";
+    if (total <= 0) return "Due now";
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const parts = [];
+    if (h > 0) parts.push(h + "h");
+    if (m > 0 || h > 0) parts.push(m + "m");
+    parts.push(s + "s");
+    return parts.join(" ");
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function renderCountdown() {
+    const countdown = document.getElementById("countdown");
+    const label = document.getElementById("nextStatusLabel");
+    if (!enabled) {
+        countdown.textContent = "Paused";
+        label.textContent = "Schedule is paused";
+        return;
+    }
+    if (serviceStatus !== "Running") {
+        countdown.textContent = formatDuration(secondsUntil);
+        label.textContent = "Service is " + (serviceStatus || "unknown").toLowerCase() + " — run will wait until it is started";
+        return;
+    }
+    if (overdue || (secondsUntil !== null && secondsUntil <= 0)) {
+        countdown.textContent = "Due now";
+        label.textContent = "Due now";
+        return;
+    }
+    countdown.textContent = formatDuration(secondsUntil);
+    label.textContent = "Next cleanup in";
+}
+
+function applyStatus(data) {
+    enabled = data.enabled;
+    serviceStatus = data.service_status;
+    overdue = data.overdue;
+    secondsUntil = data.seconds_until_next;
+    setText("nextRunAt", data.next_run_at || "not scheduled");
+    setText("intervalLabel", data.interval_label);
+    setText("lastRunAt", data.last_run_at || "never");
+    setText("lastRunSource", data.last_run_source_label);
+    setText("lastRunDeleted", data.last_run_deleted);
+    setText("lastRunError", data.last_run_error || "");
+    document.getElementById("lastRunErrorWrap").style.display = data.last_run_error ? "" : "none";
+    document.getElementById("lastRunOkWrap").style.display = (!data.last_run_error && data.last_run_at) ? "" : "none";
+    const statusEl = document.getElementById("serviceStatus");
+    statusEl.textContent = data.service_status;
+    statusEl.className = data.service_status === "Running"
+        ? "status-running"
+        : (data.service_status === "Stopped" ? "status-stopped" : "status-unknown");
+
+    const list = document.getElementById("upcomingList");
+    list.innerHTML = "";
+    if (data.upcoming && data.upcoming.length) {
+        data.upcoming.forEach(run => {
+            const li = document.createElement("li");
+            li.className = "list-group-item";
+            li.textContent = run;
+            list.appendChild(li);
+        });
+    } else {
+        const li = document.createElement("li");
+        li.className = "list-group-item text-muted";
+        li.textContent = "No upcoming runs while the schedule is paused.";
+        list.appendChild(li);
+    }
+    renderCountdown();
+}
+
+function tick() {
+    if (enabled && secondsUntil !== null && secondsUntil > 0) {
+        secondsUntil -= 1;
+    }
+    renderCountdown();
+}
+
+function refreshStatus() {
+    fetch("/api/schedule")
+        .then(r => r.json())
+        .then(applyStatus)
+        .catch(err => console.error("Failed to refresh schedule", err));
+}
+
+function runNow() {
+    const btn = document.getElementById("runNowBtn");
+    const box = document.getElementById("runMessage");
+    btn.disabled = true;
+    box.innerHTML = '<div class="alert alert-info">Running cleanup…</div>';
+    fetch("/cleanup", { method: "POST" })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === "success") {
+                box.innerHTML = '<div class="alert alert-success">Cleanup completed.</div>';
+            } else {
+                box.innerHTML = '<div class="alert alert-danger">Cleanup failed: ' + (data.message || "unknown error") + '</div>';
+            }
+            refreshStatus();
+        })
+        .catch(err => {
+            box.innerHTML = '<div class="alert alert-danger">Cleanup failed: ' + err.message + '</div>';
+        })
+        .finally(() => {
+            btn.disabled = false;
+        });
+}
+
+renderCountdown();
+setInterval(tick, 1000);
+setInterval(refreshStatus, 5000);
+</script>
+{% endblock %}

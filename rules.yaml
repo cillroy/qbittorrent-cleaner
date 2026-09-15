@@ -10,6 +10,10 @@ logging:
   max_days: 30
   enable_notifications: true
 
+schedule:
+  enabled: true
+  interval_seconds: 30  # how often the Windows service runs all rules
+
 web:
   port: 8002
   username: "admin"
