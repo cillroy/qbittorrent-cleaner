@@ -21,8 +21,7 @@ from schedule import (
     MIN_INTERVAL_SECONDS,
     MAX_INTERVAL_SECONDS,
 )
-import logging
-from logging.handlers import TimedRotatingFileHandler
+from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
 
 # -------------------------
 # CONFIGURATION
@@ -32,7 +31,21 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
-LOG_PATH = os.path.join(BASE_DIR, "qb-cleaner.log")
+LOG_PATH = ACTION_LOG
+LOG_KINDS = {
+    "action": {
+        "name": "qb-cleaner.log",
+        "path": ACTION_LOG,
+        "download": "qb-cleaner-actions.log",
+        "label": "Actions",
+    },
+    "schedule": {
+        "name": "qb-schedule.log",
+        "path": SCHEDULE_LOG,
+        "download": "qb-cleaner-schedule.log",
+        "label": "Schedule",
+    },
+}
 
 # Load config
 with open(RULES_PATH, "r") as f:
@@ -59,19 +72,8 @@ logging_config = config.get("logging", {})
 max_days = logging_config.get("max_days", 30)
 enable_notifications = logging_config.get("enable_notifications", True)
 
-# Set up logging with rotation
-logger = logging.getLogger("qb_cleaner")
-logger.setLevel(logging.INFO)
-
-# Create handler for file logging with rotation
-handler = TimedRotatingFileHandler(
-    LOG_PATH,
-    when="midnight",
-    interval=1,
-    backupCount=max_days
-)
-handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-logger.addHandler(handler)
+action_logger, schedule_logger = setup_logging(max_days)
+logger = action_logger
 
 # -------------------------
 # FASTAPI SETUP
@@ -109,16 +111,26 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
 # UTILITY FUNCTIONS
 # -------------------------
 
-def _log_file_sort_key(path):
+def _normalize_log_kind(kind):
+    if kind in LOG_KINDS:
+        return kind
+    return "action"
+
+
+def _log_file_sort_key(path, current_name):
     basename = os.path.basename(path)
-    if basename == "qb-cleaner.log":
+    if basename == current_name:
         return "9999-99-99"
     return basename.rsplit(".", 1)[-1]
 
-def get_log_files():
+
+def get_log_files(kind="action"):
     import glob
-    log_files = glob.glob(os.path.join(BASE_DIR, "qb-cleaner.log*"))
-    log_files.sort(key=_log_file_sort_key)
+    kind = _normalize_log_kind(kind)
+    current_name = LOG_KINDS[kind]["name"]
+    current_path = LOG_KINDS[kind]["path"]
+    log_files = glob.glob(current_path + "*")
+    log_files.sort(key=lambda p: _log_file_sort_key(p, current_name))
     return log_files
 
 def get_service_status():
@@ -150,9 +162,11 @@ def get_qb_status():
             "torrents": []
         }
 
-def get_recent_logs(lines=50):
+def get_recent_logs(lines=50, kind="action"):
     try:
-        log_files = get_log_files()
+        kind = _normalize_log_kind(kind)
+        current_path = LOG_KINDS[kind]["path"]
+        log_files = get_log_files(kind)
 
         if not log_files:
             return ["No log files found"]
@@ -164,23 +178,19 @@ def get_recent_logs(lines=50):
                 with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
                     file_lines = f.readlines()
 
-                # Add file separator for archived logs
-                if log_file != LOG_PATH:
+                if log_file != current_path:
                     filename = os.path.basename(log_file)
                     all_lines.append(f"\n--- Archived Log: {filename} ---\n")
 
-                # Add all lines from this file
                 all_lines.extend(file_lines)
 
             except Exception as e:
                 all_lines.append(f"Error reading {os.path.basename(log_file)}: {e}\n")
                 continue
 
-        # Return the most recent lines, newest first
         if all_lines:
             return list(reversed(all_lines[-lines:]))
-        else:
-            return ["No logs available"]
+        return ["No logs available"]
 
     except Exception as e:
         return [f"Error aggregating logs: {e}"]
@@ -364,27 +374,37 @@ def edit_rule(
 def run_cleanup(auth=Depends(authenticate)):
     try:
         def web_logger(msg):
-            logger.info(msg)
+            action_logger.info(msg)
 
-        cleaner = Cleaner(logger=web_logger)
+        def web_slog(msg):
+            schedule_logger.info(msg)
+
+        cleaner = Cleaner(logger=web_logger, schedule_logger=web_slog)
         cleaner.run(source="web")
         return {"status": "success", "message": "Cleanup completed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 @app.get("/logs", response_class=HTMLResponse)
-def logs_page(request: Request, auth=Depends(authenticate)):
-    all_logs = get_recent_logs(200)
+def logs_page(request: Request, kind: str = "action", auth=Depends(authenticate)):
+    kind = _normalize_log_kind(kind)
+    all_logs = get_recent_logs(200, kind=kind)
     template = jinja_env.get_template("logs.html")
-    html_content = template.render(logs=all_logs)
+    html_content = template.render(
+        logs=all_logs,
+        kind=kind,
+        kind_label=LOG_KINDS[kind]["label"],
+    )
     return HTMLResponse(content=html_content)
 
 @app.get("/download-logs")
-def download_logs(auth=Depends(authenticate)):
+def download_logs(kind: str = "action", auth=Depends(authenticate)):
     try:
         from fastapi.responses import PlainTextResponse
 
-        log_files = get_log_files()
+        kind = _normalize_log_kind(kind)
+        meta = LOG_KINDS[kind]
+        log_files = get_log_files(kind)
 
         if not log_files:
             return PlainTextResponse("No log files found", status_code=404)
@@ -396,28 +416,24 @@ def download_logs(auth=Depends(authenticate)):
                 with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
                     file_content = f.read()
 
-                # Add file separator for archived logs
-                if log_file != LOG_PATH:
+                if log_file != meta["path"]:
                     filename = os.path.basename(log_file)
                     combined_content.append(f"\n--- Archived Log: {filename} ---\n")
 
-                # Add all content from this file
                 combined_content.append(file_content)
 
             except Exception as e:
                 combined_content.append(f"Error reading {os.path.basename(log_file)}: {e}\n")
 
-        # Join all content
         full_content = "".join(combined_content)
 
         if not full_content.strip():
             return PlainTextResponse("No logs available", status_code=404)
 
-        # Return as downloadable text file
         return PlainTextResponse(
             content=full_content,
             headers={
-                "Content-Disposition": "attachment; filename=qb-cleaner-full.log"
+                "Content-Disposition": f"attachment; filename={meta['download']}"
             }
         )
 

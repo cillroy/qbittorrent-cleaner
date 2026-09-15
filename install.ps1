@@ -60,6 +60,7 @@ $CodeFiles = @(
     'cleaner.py',
     'qb_api.py',
     'schedule.py',
+    'logutil.py',
     'service.py',
     'tray.py',
     'web.py',
