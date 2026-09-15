@@ -9,8 +9,9 @@
     {% if update and update.update_available %}
     <div class="alert alert-info">
         <strong>Update available:</strong> {{ update.local }} → {{ update.latest }}.
-        Copy the new files (do not overwrite <code>rules.yaml</code>), then run <code>update.cmd</code>.
-        <a href="{{ update.release_url }}" target="_blank" rel="noopener">Open GitHub release</a>
+        <button type="button" class="btn btn-sm btn-primary ms-2" onclick="installGithubUpdate()">Install now</button>
+        <a class="ms-2" href="{{ update.release_url }}" target="_blank" rel="noopener">Open GitHub release</a>
+        <span class="d-block small mt-2">Installs from GitHub, keeps <code>rules.yaml</code>, <code>logs\</code>, and <code>data\</code>. Accept UAC if prompted.</span>
     </div>
     {% endif %}
 
@@ -65,4 +66,16 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function installGithubUpdate() {
+    if (!confirm('Download the latest GitHub release and install it? The service and web UI will restart.')) return;
+    fetch('/api/updates/install', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => alert(data.message || data.status))
+        .catch(err => alert('Could not start updater: ' + err));
+}
+</script>
 {% endblock %}

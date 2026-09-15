@@ -76,7 +76,9 @@ $CodeFiles = @(
     'version.py',
     'update_check.py',
     'paths.py',
-    'cleanup.cmd'
+    'cleanup.cmd',
+    'self_update.py',
+    'update-from-github.cmd'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
 function Write-Ok($message)   { Write-Host "   OK  $message" -ForegroundColor Green }

@@ -1,6 +1,7 @@
 # web.py - Web interface for qBittorrent Cleaner
 
 import os
+import subprocess
 import yaml
 import uvicorn
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
@@ -500,6 +501,21 @@ def help_page(request: Request, auth=Depends(authenticate)):
 @app.get("/api/updates")
 def updates_api(refresh: int = 0, auth=Depends(authenticate)):
     return check_for_update(force=bool(refresh))
+
+
+@app.post("/api/updates/install")
+def install_github_update_api(auth=Depends(authenticate)):
+    cmd = os.path.join(BASE_DIR, "update-from-github.cmd")
+    if not os.path.isfile(cmd):
+        return {"status": "error", "message": "update-from-github.cmd is missing"}
+    try:
+        subprocess.Popen(["cmd.exe", "/c", cmd], cwd=BASE_DIR)
+        return {
+            "status": "started",
+            "message": "Updater started. Accept the UAC prompt if it appears. The web UI will restart.",
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/settings", response_class=HTMLResponse)
