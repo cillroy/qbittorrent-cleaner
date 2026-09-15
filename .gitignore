@@ -68,3 +68,5 @@ Desktop.ini
 *.tmp
 *.old
 *.orig
+
+azure-pipelines.yml
