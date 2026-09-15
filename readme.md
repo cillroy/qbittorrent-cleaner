@@ -31,9 +31,10 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
   - Green — both running
   - Yellow — only one running, or status unknown
   - Red — both stopped
-- Right-click menu: status rows, open web UI, run cleanup, Service / Web / Open submenus
-- `start-tray.cmd` launches it elevated (needed to start/stop the service)
+- Right-click menu: status rows, open web UI, run cleanup, check for updates, Service / Web (including Restart) / Open submenus
+- `start-tray.cmd` self-elevates (UAC), then starts the tray — needed to start/stop the Windows service
 - Optional debug: `python tray.py debug` → `tray-debug.log`
+- If the icon appears then vanishes: `tray-crash.log` in the install folder
 - Auto-start via Scheduled Task (`QBCleanerTray.xml`)
 
 ### Web UI
@@ -77,7 +78,7 @@ qBittorrent Cleaner/
 └── requirements.txt
 ```
 
-Runtime files (created as needed, not overwritten by update): `rules.yaml`, `qb-cleaner.log*`, `qb-schedule.log*`, `schedule_state.json`, `update_check_cache.json`.
+Runtime files (created as needed, not overwritten by update): `rules.yaml`, `qb-cleaner.log*`, `qb-schedule.log*`, `schedule_state.json`, `update_check_cache.json`, `tray-crash.log`.
 
 ---
 
@@ -94,9 +95,9 @@ Packages: pywin32, requests, PyYAML, pystray, Pillow, plyer, FastAPI, uvicorn, J
 
 # Install / update
 
-Prefer the scripts. They handle execution policy, pip, and the Windows service.
+Prefer the `.cmd` scripts. Double-click them; they self-elevate (UAC) so paths with spaces like `C:\qBittorrent Cleaner` work. The elevated window stays open so you can read errors.
 
-**First install** (elevated):
+**First install:**
 
 ```bat
 install.cmd
@@ -154,7 +155,7 @@ python service.py remove
 
 # Tray
 
-**Start it:** double-click `start-tray.cmd` (UAC so service control works).
+**Start it:** double-click `start-tray.cmd` (accept UAC). The elevated cmd window closes after launch; the icon should stay in the notification area.
 
 Or:
 
@@ -162,6 +163,8 @@ Or:
 pythonw tray.py
 python tray.py debug
 ```
+
+Tray → **Web → Restart** bounces `web.py`. **Check for updates** compares `VERSION` to GitHub releases (does not apply the update).
 
 ### Auto-start at logon
 
@@ -241,11 +244,14 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | `qb-cleaner.log` | Deletions, errors, service lifecycle |
 | `qb-schedule.log` | Every scheduled/manual pass |
 | `tray-debug.log` | Tray internals (`python tray.py debug`) |
+| `tray-crash.log` | Tray started then died (imports, icon loop) |
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
 | Tray icon yellow | Only one of service/web is up, or status unknown | Check the menu status rows |
 | Tray icon red | Both service and web stopped | Start them from the tray (elevated) |
+| Tray flashes then vanishes | Crash after the icon is shown | Open `tray-crash.log` |
+| `install.cmd` / `update.cmd` / `start-tray.cmd` close after UAC | Old launchers (path with spaces) | Copy the current `.cmd` files and run again; leave the elevated window open |
 | `.\install.ps1` blocked | Execution policy | Use `update.cmd` / `install.cmd` |
 | Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |
 | Cleanup not happening | Rule mismatch, or schedule paused | Scheduler page + action log |
