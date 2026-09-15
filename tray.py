@@ -298,7 +298,7 @@ def run_cleanup_now(icon, item):
             )
 
     cleaner = Cleaner(logger=combined_logger, notifier=combined_logger)
-    cleaner.run_once()
+    cleaner.run_once(source="tray")
     icon.notify("Cleanup executed")
 
 def open_log(icon, item):

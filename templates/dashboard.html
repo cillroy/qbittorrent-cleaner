@@ -32,5 +32,29 @@
             </div>
         </div>
     </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Next cleanup</h5>
+                    <a href="/schedule" class="btn btn-sm btn-outline-primary">Scheduler</a>
+                </div>
+                <div class="card-body">
+                    {% if not schedule.enabled %}
+                    <p class="mb-1"><strong>Schedule:</strong> Paused</p>
+                    {% elif schedule.overdue %}
+                    <p class="mb-1"><strong>Next run:</strong> Due now</p>
+                    {% else %}
+                    <p class="mb-1"><strong>Next run:</strong> {{ schedule.next_run_at or "not scheduled" }}</p>
+                    {% endif %}
+                    <p class="mb-1"><strong>Interval:</strong> {{ schedule.interval_label }}</p>
+                    <p class="mb-0"><strong>Last run:</strong> {{ schedule.last_run_at or "never" }}
+                        {% if schedule.last_run_at %}({{ schedule.last_run_source_label }}){% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

@@ -14,6 +14,13 @@ from datetime import datetime
 import win32serviceutil
 from cleaner import Cleaner
 from qb_api import QBClient
+from schedule import (
+    get_schedule_status,
+    apply_interval_change,
+    seconds_to_unit,
+    MIN_INTERVAL_SECONDS,
+    MAX_INTERVAL_SECONDS,
+)
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -240,9 +247,14 @@ def get_deletion_stats():
     except Exception as e:
         return {"last_24h": 0, "last_30d": 0}
 
+def load_config():
+    with open(RULES_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
 def save_config(new_config):
-    with open(RULES_PATH, "w") as f:
-        yaml.safe_dump(new_config, f, default_flow_style=False)
+    with open(RULES_PATH, "w", encoding="utf-8") as f:
+        yaml.safe_dump(new_config, f, default_flow_style=False, sort_keys=False)
 
 # -------------------------
 # ROUTES
@@ -254,6 +266,7 @@ def dashboard(request: Request, auth=Depends(authenticate)):
     qb_status = get_qb_status()
     recent_logs = get_recent_logs(10)
     deletion_stats = get_deletion_stats()
+    schedule_status = get_schedule_status(load_config(), service_status=service_status)
 
     template = jinja_env.get_template("dashboard.html")
     html_content = template.render(
@@ -261,16 +274,18 @@ def dashboard(request: Request, auth=Depends(authenticate)):
         qb_status=qb_status,
         recent_logs=recent_logs,
         deletion_stats=deletion_stats,
+        schedule=schedule_status,
         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     )
     return HTMLResponse(content=html_content)
 
 @app.get("/rules", response_class=HTMLResponse)
 def rules_page(request: Request, auth=Depends(authenticate)):
+    current = load_config()
     template = jinja_env.get_template("rules.html")
     html_content = template.render(
-        rules=config.get("rules", []),
-        qb_config=qb_config
+        rules=current.get("rules", []),
+        qb_config=current.get("qbittorrent", {})
     )
     return HTMLResponse(content=html_content)
 
@@ -297,18 +312,20 @@ def add_rule(
         }
     }
 
-    if "rules" not in config:
-        config["rules"] = []
-    config["rules"].append(new_rule)
-    save_config(config)
+    current = load_config()
+    if "rules" not in current:
+        current["rules"] = []
+    current["rules"].append(new_rule)
+    save_config(current)
 
     return RedirectResponse(url="/rules", status_code=303)
 
 @app.post("/rules/delete/{rule_index}")
 def delete_rule(rule_index: int, auth=Depends(authenticate)):
-    if "rules" in config and 0 <= rule_index < len(config["rules"]):
-        config["rules"].pop(rule_index)
-        save_config(config)
+    current = load_config()
+    if "rules" in current and 0 <= rule_index < len(current["rules"]):
+        current["rules"].pop(rule_index)
+        save_config(current)
     return RedirectResponse(url="/rules", status_code=303)
 
 @app.post("/rules/edit/{rule_index}")
@@ -326,11 +343,12 @@ def edit_rule(
     except:
         match_criteria = {}
 
-    if "rules" not in config:
-        config["rules"] = []
+    current = load_config()
+    if "rules" not in current:
+        current["rules"] = []
 
-    if 0 <= rule_index < len(config["rules"]):
-        config["rules"][rule_index] = {
+    if 0 <= rule_index < len(current["rules"]):
+        current["rules"][rule_index] = {
             "name": name,
             "match": match_criteria,
             "action": {
@@ -338,7 +356,7 @@ def edit_rule(
                 "delete_files": delete_files
             }
         }
-        save_config(config)
+        save_config(current)
 
     return RedirectResponse(url="/rules", status_code=303)
 
@@ -346,11 +364,10 @@ def edit_rule(
 def run_cleanup(auth=Depends(authenticate)):
     try:
         def web_logger(msg):
-            # Could add to a web log or notification
-            print(f"Web cleanup: {msg}")
+            logger.info(msg)
 
         cleaner = Cleaner(logger=web_logger)
-        cleaner.run_once()
+        cleaner.run(source="web")
         return {"status": "success", "message": "Cleanup completed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -407,10 +424,47 @@ def download_logs(auth=Depends(authenticate)):
     except Exception as e:
         return PlainTextResponse(f"Error generating log file: {e}", status_code=500)
 
+@app.get("/schedule", response_class=HTMLResponse)
+def schedule_page(request: Request, saved: int = 0, auth=Depends(authenticate)):
+    service_status = get_service_status()
+    status = get_schedule_status(load_config(), service_status=service_status)
+    template = jinja_env.get_template("schedule.html")
+    html_content = template.render(schedule=status, saved=bool(saved))
+    return HTMLResponse(content=html_content)
+
+
+@app.get("/api/schedule")
+def schedule_api(auth=Depends(authenticate)):
+    service_status = get_service_status()
+    return get_schedule_status(load_config(), service_status=service_status)
+
+
+@app.post("/schedule")
+def update_schedule(
+    interval_value: int = Form(...),
+    interval_unit: str = Form("seconds"),
+    enabled: str | None = Form(None),
+    auth=Depends(authenticate)
+):
+    unit = interval_unit if interval_unit in ("seconds", "minutes", "hours") else "seconds"
+    seconds = seconds_to_unit(max(1, interval_value), unit)
+    seconds = max(MIN_INTERVAL_SECONDS, min(MAX_INTERVAL_SECONDS, seconds))
+
+    current = load_config()
+    current["schedule"] = {
+        "enabled": enabled == "on",
+        "interval_seconds": seconds,
+    }
+    save_config(current)
+    apply_interval_change(seconds)
+
+    return RedirectResponse(url="/schedule?saved=1", status_code=303)
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, auth=Depends(authenticate)):
     template = jinja_env.get_template("settings.html")
-    html_content = template.render(config=config)
+    html_content = template.render(config=load_config())
     return HTMLResponse(content=html_content)
 
 @app.post("/settings")
@@ -426,22 +480,26 @@ def update_settings(
     enable_notifications: bool = Form(True),
     auth=Depends(authenticate)
 ):
-    # Update config
-    config["qbittorrent"]["url"] = qb_url
+    current = load_config()
+
+    current.setdefault("qbittorrent", {})
+    current["qbittorrent"]["url"] = qb_url
     if qb_username:
-        config["qbittorrent"]["username"] = qb_username
+        current["qbittorrent"]["username"] = qb_username
     if qb_password:
-        config["qbittorrent"]["password"] = qb_password
+        current["qbittorrent"]["password"] = qb_password
 
-    config["web"]["port"] = web_port
-    config["web"]["username"] = web_username
-    config["web"]["password"] = web_password
-    config["web"]["enable_auth"] = enable_auth
+    current.setdefault("web", {})
+    current["web"]["port"] = web_port
+    current["web"]["username"] = web_username
+    current["web"]["password"] = web_password
+    current["web"]["enable_auth"] = enable_auth
 
-    config["logging"]["max_days"] = max_days
-    config["logging"]["enable_notifications"] = enable_notifications
+    current.setdefault("logging", {})
+    current["logging"]["max_days"] = max_days
+    current["logging"]["enable_notifications"] = enable_notifications
 
-    save_config(config)
+    save_config(current)
 
     return RedirectResponse(url="/settings", status_code=303)
 
