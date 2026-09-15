@@ -1,14 +1,19 @@
 @echo off
-setlocal
-:: Double-click this (or run from an elevated prompt) to update
-:: the production install. Default dest is C:\qBittorrent Cleaner
-:: if that exists, otherwise this folder (in-place).
+setlocal EnableExtensions
+cd /d "%~dp0"
+
+:: Same Bypass wrapper as install.cmd, always runs the update action.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Unblock-File -LiteralPath '%~dp0install.ps1' -ErrorAction SilentlyContinue"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" update %*
-if errorlevel 1 (
+set "ERR=%ERRORLEVEL%"
+
+if not "%ERR%"=="0" (
     echo.
-    echo Update failed.
+    echo Update failed with exit code %ERR%.
     pause
-    exit /b 1
+    exit /b %ERR%
 )
+
 echo.
 pause
+exit /b 0
