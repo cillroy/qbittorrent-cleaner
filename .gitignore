@@ -70,3 +70,4 @@ Desktop.ini
 *.orig
 
 azure-pipelines.yml
+tray-crash.log
