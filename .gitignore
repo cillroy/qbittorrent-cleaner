@@ -1,73 +1,12 @@
-# -------------------------
-# Python
-# -------------------------
+logs/
+data/
+.backup/
+.venv/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-*.pdb
-
-# Byte-compiled / optimized / DLL files
-*.so
-*.dll
-*.dylib
-
-# -------------------------
-# Virtual Environments
-# -------------------------
-venv/
-env/
-.venv/
-
-# -------------------------
-# Logs
-# -------------------------
-qb-cleaner.log*
-tray-debug.log
-
-# -------------------------
-# Windows Service Artifacts
-# -------------------------
-*.exe
-*.manifest
-*.spec
-
-# pywin32 service install cache
-win32/
-win32com/
-pywin32_system32/
-
-# -------------------------
-# Build / Distribution
-# -------------------------
-build/
-dist/
-*.egg-info/
-*.egg
-
-# -------------------------
-# IDE / Editor Junk
-# -------------------------
-.vscode/
-.idea/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-
-# -------------------------
-# OS Junk
-# -------------------------
-Thumbs.db
-Desktop.ini
-
-# -------------------------
-# Backup / Temp Files
-# -------------------------
-*.bak
-*.tmp
-*.old
-*.orig
-
-azure-pipelines.yml
+update_check_cache.json
+schedule_state.json
 tray-crash.log
+tray-debug.log
+qb-cleaner.log*
+qb-schedule.log*

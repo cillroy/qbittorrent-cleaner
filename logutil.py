@@ -4,9 +4,12 @@ import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ACTION_LOG = os.path.join(BASE_DIR, "qb-cleaner.log")
-SCHEDULE_LOG = os.path.join(BASE_DIR, "qb-schedule.log")
+from paths import (
+    ACTION_LOG,
+    SCHEDULE_LOG,
+    ensure_runtime_dirs,
+    migrate_legacy_files,
+)
 
 ACTION_LOGGER_NAME = "qb_cleaner.action"
 SCHEDULE_LOGGER_NAME = "qb_cleaner.schedule"
@@ -37,6 +40,8 @@ def _file_handler(path, max_days):
 
 def setup_logging(max_days=30):
     """Attach rotating file handlers. Safe to call more than once per process."""
+    migrate_legacy_files()
+    ensure_runtime_dirs()
     action = logging.getLogger(ACTION_LOGGER_NAME)
     schedule = logging.getLogger(SCHEDULE_LOGGER_NAME)
     action.setLevel(logging.INFO)

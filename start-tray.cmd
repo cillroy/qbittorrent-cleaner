@@ -40,6 +40,6 @@ if not exist "%~dp0tray.py" (
 echo Starting tray with:
 echo   "%PYW%"
 echo   "%~dp0tray.py"
-echo If the icon vanishes, open tray-crash.log in this folder.
+echo If the icon vanishes, open logs\tray\tray-crash.log in this folder.
 start "" /D "%~dp0" "%PYW%" "%~dp0tray.py"
 exit /b 0

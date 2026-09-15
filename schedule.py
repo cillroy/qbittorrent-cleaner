@@ -4,8 +4,8 @@ import json
 import os
 from datetime import datetime, timedelta
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATE_PATH = os.path.join(BASE_DIR, "schedule_state.json")
+from paths import BASE_DIR, SCHEDULE_STATE_PATH as STATE_PATH, ensure_runtime_dirs, migrate_legacy_files
+
 RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
 
 DEFAULT_INTERVAL_SECONDS = 30
@@ -43,6 +43,7 @@ def load_schedule_config(config=None):
 
 
 def load_state():
+    migrate_legacy_files()
     try:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -54,6 +55,7 @@ def load_state():
 
 
 def save_state(state):
+    ensure_runtime_dirs()
     tmp = STATE_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)

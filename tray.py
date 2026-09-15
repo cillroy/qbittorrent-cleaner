@@ -5,11 +5,18 @@ import sys
 import traceback
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-_CRASH_LOG = os.path.join(_BASE_DIR, "tray-crash.log")
+try:
+    from paths import TRAY_CRASH_LOG as _CRASH_LOG, TRAY_LOG_DIR, ensure_runtime_dirs, migrate_legacy_files
+    ensure_runtime_dirs()
+    migrate_legacy_files()
+except Exception:
+    _CRASH_LOG = os.path.join(_BASE_DIR, "tray-crash.log")
+    TRAY_LOG_DIR = os.path.join(_BASE_DIR, "logs", "tray")
 
 
 def _log_crash(prefix, exc=None):
     try:
+        os.makedirs(os.path.dirname(_CRASH_LOG), exist_ok=True)
         with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
             fh.write(prefix + "\n")
             traceback.print_exc(file=fh)
@@ -20,6 +27,7 @@ def _log_crash(prefix, exc=None):
 
 def _excepthook(exc_type, exc, tb):
     try:
+        os.makedirs(os.path.dirname(_CRASH_LOG), exist_ok=True)
         with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
             fh.write("unhandled exception\n")
             traceback.print_exception(exc_type, exc, tb, file=fh)
@@ -47,13 +55,14 @@ import socket
 from plyer import notification
 from cleaner import Cleaner
 from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
+from paths import TRAY_DEBUG_LOG
 
 SERVICE_NAME = "QBCleanerService"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = ACTION_LOG
 SCHEDULE_LOG_PATH = SCHEDULE_LOG
 RULES_PATH = os.path.join(BASE_DIR, "rules.yaml")
-DEBUG_LOG = os.path.join(BASE_DIR, "tray-debug.log")
+DEBUG_LOG = TRAY_DEBUG_LOG
 
 # -------------------------
 # DEBUG FLAG
@@ -62,6 +71,7 @@ DEBUG_LOG = os.path.join(BASE_DIR, "tray-debug.log")
 ENABLE_DEBUG = "debug" in sys.argv
 
 if ENABLE_DEBUG:
+    os.makedirs(os.path.dirname(DEBUG_LOG), exist_ok=True)
     logging.basicConfig(
         filename=DEBUG_LOG,
         level=logging.DEBUG,
@@ -632,6 +642,7 @@ def on_icon_ready(icon):
 
 if __name__ == "__main__":
     try:
+        os.makedirs(os.path.dirname(_CRASH_LOG), exist_ok=True)
         with open(_CRASH_LOG, "a", encoding="utf-8") as fh:
             fh.write(
                 f"start python={sys.executable} file={__file__} cwd={os.getcwd()} "

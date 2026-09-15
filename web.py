@@ -22,6 +22,7 @@ from schedule import (
     MAX_INTERVAL_SECONDS,
 )
 from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
+from paths import LOGS_DIR, ACTIONS_LOG_DIR, migrate_legacy_files
 from version import read_local_version
 from update_check import check_for_update
 
@@ -83,7 +84,7 @@ logger = action_logger
 
 app = FastAPI(title="qBittorrent Cleaner Web", version=read_local_version())
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.mount("/static/logs", StaticFiles(directory=BASE_DIR), name="logs")
+app.mount("/static/logs", StaticFiles(directory=LOGS_DIR), name="logs")
 from jinja2 import Environment, FileSystemLoader
 jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), cache_size=0)
 jinja_env.globals.update(
@@ -212,8 +213,10 @@ def get_deletion_stats():
         from datetime import datetime, timedelta
 
         # Find all log files (main + archived)
-        log_pattern = os.path.join(BASE_DIR, "qb-cleaner.log*")
+        log_pattern = os.path.join(ACTIONS_LOG_DIR, "qb-cleaner.log*")
         log_files = glob.glob(log_pattern)
+        if not log_files:
+            log_files = glob.glob(os.path.join(BASE_DIR, "qb-cleaner.log*"))
 
         if not log_files:
             return {"last_24h": 0, "last_30d": 0}
