@@ -69,7 +69,8 @@ $CodeFiles = @(
     'readme.md',
     'install.ps1',
     'install.cmd',
-    'update.cmd'
+    'update.cmd',
+    'start-tray.cmd'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
 function Write-Ok($message)   { Write-Host "   OK  $message" -ForegroundColor Green }

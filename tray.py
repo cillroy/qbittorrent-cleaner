@@ -232,7 +232,7 @@ def start_web_server(icon, item):
 
     if current_status == "Running":
         logging.debug("Web server already running, skipping start")
-        icon.notify("Web server is already running")
+        notify_now(icon, f"Web already running on :{get_web_port()}")
         return
 
     try:
@@ -249,22 +249,20 @@ def start_web_server(icon, item):
         )
         logging.debug(f"Subprocess created with PID: {web_process.pid}")
 
-        logging.debug("Waiting 2 seconds for web server to start...")
-        time.sleep(2)  # Give it time to start
+        wait_until(lambda: get_web_status() == "Running", timeout=8.0)
 
         final_status = get_web_status()
         logging.debug(f"Final web server status after start attempt: {final_status}")
 
         if final_status == "Running":
             logging.debug("Web server start successful")
-            icon.notify("Web server started successfully")
+            notify_now(icon, f"Web started — running on :{get_web_port()}")
         else:
             logging.debug("Web server start failed - port not responding")
-            icon.notify("Web server failed to start")
-        icon.update_menu()
+            notify_now(icon, "Web failed to start (port not responding)")
     except Exception as e:
         logging.debug(f"Exception during web server start: {e}")
-        icon.notify(f"Failed to start web server: {str(e)}")
+        notify_now(icon, f"Failed to start web server: {str(e)}")
 
 def stop_web_server(icon, item):
     global web_process
@@ -275,7 +273,7 @@ def stop_web_server(icon, item):
 
     if current_status == "Stopped":
         logging.debug("Web server already stopped, skipping stop")
-        icon.notify("Web server is already stopped")
+        notify_now(icon, "Web is already stopped")
         return
 
     try:
@@ -304,14 +302,13 @@ def stop_web_server(icon, item):
 
         if final_status == "Stopped":
             logging.debug("Web server stop successful")
-            icon.notify("Web server stopped successfully")
+            notify_now(icon, "Web stopped")
         else:
             logging.debug("Web server stop may have failed - still responding on port")
-            icon.notify("Web server may still be running")
-        icon.update_menu()
+            notify_now(icon, "Web may still be running")
     except Exception as e:
         logging.debug(f"Exception during web server stop: {e}")
-        icon.notify(f"Error stopping web server: {str(e)}")
+        notify_now(icon, f"Error stopping web server: {str(e)}")
 
 def open_web_interface(icon, item):
     logging.debug("open_web_interface() called")
@@ -325,10 +322,10 @@ def open_web_interface(icon, item):
         import webbrowser
         webbrowser.open(url)
         logging.debug("Browser opened successfully")
-        icon.notify(f"Opened web interface: {url}")
+        notify_now(icon, f"Opened {url}")
     except Exception as e:
         logging.debug(f"Failed to open browser: {e}")
-        icon.notify(f"Failed to open browser: {str(e)}")
+        notify_now(icon, f"Failed to open browser: {str(e)}")
 
 # -------------------------
 # MENU ACTIONS
@@ -336,27 +333,27 @@ def open_web_interface(icon, item):
 
 def start_service(icon, item):
     if not is_elevated():
-        icon.notify("Tray app is not elevated - cannot control service")
+        notify_now(icon, "Tray is not elevated - cannot control the Windows service")
         return
     win32serviceutil.StartService(SERVICE_NAME)
-    icon.notify("Service started")
-    icon.update_menu()
+    wait_until(lambda: query_service_status() == "Running")
+    notify_now(icon, f"Windows service is {query_service_status()}")
 
 def stop_service(icon, item):
     if not is_elevated():
-        icon.notify("Tray app is not elevated - cannot control service")
+        notify_now(icon, "Tray is not elevated - cannot control the Windows service")
         return
     win32serviceutil.StopService(SERVICE_NAME)
-    icon.notify("Service stopped")
-    icon.update_menu()
+    wait_until(lambda: query_service_status() == "Stopped")
+    notify_now(icon, f"Windows service is {query_service_status()}")
 
 def restart_service(icon, item):
     if not is_elevated():
-        icon.notify("Tray app is not elevated - cannot control service")
+        notify_now(icon, "Tray is not elevated - cannot control the Windows service")
         return
     win32serviceutil.RestartService(SERVICE_NAME)
-    icon.notify("Service restarted")
-    icon.update_menu()
+    wait_until(lambda: query_service_status() == "Running")
+    notify_now(icon, f"Windows service is {query_service_status()}")
 
 
 def _service_running(_item=None):
@@ -428,27 +425,74 @@ def quit_app(icon, item):
 # ICON AUTO-REFRESH THREAD
 # -------------------------
 
+def overall_status():
+    """Green only when both the Windows service and web UI are running."""
+    svc = query_service_status()
+    web = get_web_status()
+    if svc == "Running" and web == "Running":
+        return "Running"
+    if svc == "Stopped" and web == "Stopped":
+        return "Stopped"
+    return "Unknown"
+
+
+def icon_color_name():
+    return COLOR_MAP.get(overall_status(), "yellow")
+
+
+def icon_title_text():
+    return f"qBittorrent Cleaner  {status_text()}  |  {web_status_text()}"
+
+
+def refresh_appearance(icon):
+    """Paint current status onto the tray icon before any toast is shown.
+
+    Windows notification toasts reuse the current tray HICON, so notifying
+    before this runs shows the previous (stale) color.
+    """
+    icon.icon = fresh_icon(icon_color_name())
+    icon.title = icon_title_text()
+    icon.update_menu()
+
+
+def notify_now(icon, message):
+    refresh_appearance(icon)
+    time.sleep(0.15)
+    icon.notify(message)
+
+
+def wait_until(predicate, timeout=8.0, interval=0.25):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return bool(predicate())
+
+
 def status_watcher(icon):
     last_key = None
 
-    while icon.visible:
-        icon_status = get_status()
+    while True:
+        if not icon._running:
+            break
+        if not icon.visible:
+            time.sleep(0.2)
+            continue
+
         svc = query_service_status()
         web = get_web_status()
-        key = (icon_status, svc, web)
+        key = (svc, web, overall_status())
 
         if ENABLE_DEBUG:
-            logging.debug(f"Service={svc} icon={icon_status} web={web}")
+            logging.debug(f"Service={svc} web={web} overall={key[2]} elevated={is_elevated()}")
 
         if key != last_key:
-            color = COLOR_MAP.get(icon_status, "yellow")
-            icon.icon = fresh_icon(color)
-            icon.update_menu()
+            refresh_appearance(icon)
             last_key = key
             if ENABLE_DEBUG:
-                logging.debug(f"Updated icon to {color}")
+                logging.debug(f"Updated icon to {icon_color_name()}")
 
-        icon.title = f"qBittorrent Cleaner  {status_text()}  |  {web_status_text()}"
         time.sleep(1)
 
 # -------------------------
@@ -487,16 +531,15 @@ def iter_menu():
 
 icon = pystray.Icon(
     "QBCleaner",
-    fresh_icon("yellow"),
-    title=f"qBittorrent Cleaner  {status_text()}  |  {web_status_text()}",
+    fresh_icon(icon_color_name()),
+    title=icon_title_text(),
     menu=pystray.Menu(iter_menu),
 )
 
-def start_watcher_after_icon():
-    time.sleep(0.5)
+def on_icon_ready(icon):
+    icon.visible = True
     threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
 
 
 if __name__ == "__main__":
-    threading.Thread(target=start_watcher_after_icon, daemon=True).start()
-    icon.run()
+    icon.run(setup=on_icon_ready)
