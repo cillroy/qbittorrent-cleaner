@@ -9,18 +9,20 @@ LOGS_DIR = os.path.join(BASE_DIR, "logs")
 ACTIONS_LOG_DIR = os.path.join(LOGS_DIR, "actions")
 SCHEDULE_LOG_DIR = os.path.join(LOGS_DIR, "schedule")
 TRAY_LOG_DIR = os.path.join(LOGS_DIR, "tray")
+UPDATE_LOG_DIR = os.path.join(LOGS_DIR, "update")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 ACTION_LOG = os.path.join(ACTIONS_LOG_DIR, "qb-cleaner.log")
 SCHEDULE_LOG = os.path.join(SCHEDULE_LOG_DIR, "qb-schedule.log")
 TRAY_DEBUG_LOG = os.path.join(TRAY_LOG_DIR, "tray-debug.log")
 TRAY_CRASH_LOG = os.path.join(TRAY_LOG_DIR, "tray-crash.log")
+UPDATE_LOG = os.path.join(UPDATE_LOG_DIR, "self-update.log")
 SCHEDULE_STATE_PATH = os.path.join(DATA_DIR, "schedule_state.json")
 UPDATE_CACHE_PATH = os.path.join(DATA_DIR, "update_check_cache.json")
 
 
 def ensure_runtime_dirs():
-    for folder in (ACTIONS_LOG_DIR, SCHEDULE_LOG_DIR, TRAY_LOG_DIR, DATA_DIR):
+    for folder in (ACTIONS_LOG_DIR, SCHEDULE_LOG_DIR, TRAY_LOG_DIR, UPDATE_LOG_DIR, DATA_DIR):
         os.makedirs(folder, exist_ok=True)
 
 

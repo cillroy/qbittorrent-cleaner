@@ -246,6 +246,7 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | `logs/schedule/qb-schedule.log` | Every scheduled/manual pass |
 | `logs/tray/tray-debug.log` | Tray internals (`python tray.py debug`) |
 | `logs/tray/tray-crash.log` | Tray started then died (imports, icon loop) |
+| `logs/update/self-update.log` | GitHub download/install (`update-from-github.cmd`) |
 | `data/schedule_state.json` | Last/next run timestamps |
 | `data/update_check_cache.json` | Cached GitHub latest-release check |
 
