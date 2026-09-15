@@ -254,7 +254,7 @@ def _kill_web_processes():
     return killed
 
 
-def start_web_server(icon, item, quiet=False):
+def start_web_server(icon, item, *, quiet=False):
     global web_process
     logging.debug("start_web_server() called")
 
@@ -301,7 +301,7 @@ def start_web_server(icon, item, quiet=False):
             notify_now(icon, f"Failed to start web server: {str(e)}")
         return False
 
-def stop_web_server(icon, item, quiet=False):
+def stop_web_server(icon, item, *, quiet=False):
     global web_process
     logging.debug("stop_web_server() called")
 
