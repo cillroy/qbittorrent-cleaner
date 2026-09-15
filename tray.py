@@ -42,10 +42,29 @@ else:
 # LOAD CONFIG
 # -------------------------
 
-with open(RULES_PATH, "r") as f:
-    config = yaml.safe_load(f)
-logging_config = config.get("logging", {})
-enable_notifications = logging_config.get("enable_notifications", True)
+config = {}
+enable_notifications = True
+
+def load_config():
+    global config, enable_notifications
+    try:
+        with open(RULES_PATH, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+        enable_notifications = bool(
+            (config.get("logging") or {}).get("enable_notifications", True)
+        )
+    except Exception as e:
+        logging.debug(f"Failed to reload config: {e}")
+    return config
+
+load_config()
+
+def get_web_port():
+    load_config()
+    try:
+        return int((config.get("web") or {}).get("port", 8081))
+    except (TypeError, ValueError):
+        return 8081
 
 # -------------------------
 # ELEVATION CHECK
@@ -84,44 +103,73 @@ COLOR_MAP = {
 # SERVICE STATUS
 # -------------------------
 
+def query_service_status():
+    """Service state only — does not require elevation to read."""
+    try:
+        raw = win32serviceutil.QueryServiceStatus(SERVICE_NAME)[1]
+        if raw == 4:
+            return "Running"
+        if raw == 1:
+            return "Stopped"
+        return "Unknown"
+    except Exception:
+        return "Unknown"
+
+
 def get_status():
     if not is_elevated():
         return "Not Elevated"
+    return query_service_status()
 
-    try:
-        status = win32serviceutil.QueryServiceStatus(SERVICE_NAME)
-        raw = status[1]
 
-        # Service status codes:
-        # 1 = SERVICE_STOPPED
-        # 2 = SERVICE_START_PENDING
-        # 3 = SERVICE_STOP_PENDING
-        # 4 = SERVICE_RUNNING
-        # 5 = SERVICE_CONTINUE_PENDING
-        # 6 = SERVICE_PAUSE_PENDING
-        # 7 = SERVICE_PAUSED
+def service_dot(status=None):
+    status = status or query_service_status()
+    return {
+        "Running": "🟢",
+        "Stopped": "🔴",
+        "Unknown": "🟡",
+        "Not Elevated": "🔵",
+    }.get(status, "🟡")
 
-        if raw == 4:
-            return "Running"
-        elif raw == 1:
-            return "Stopped"
-        elif raw in (2, 3, 5, 6):
-            return "Unknown"  # Transitioning
-        else:
-            return "Unknown"
-
-    except Exception as e:
-        # Service might not exist or other error
-        return "Unknown"
 
 def status_text():
-    s = get_status()
+    if not is_elevated():
+        svc = query_service_status()
+        return f"{service_dot(svc)} {svc} (tray not elevated)"
+    s = query_service_status()
+    return f"{service_dot(s)} {s}"
+
+
+def service_menu_text(_=None):
+    s = query_service_status()
+    return f"{service_dot(s)}  Service: {s}"
+
+
+def web_dot(status=None):
+    status = status or get_web_status()
     return {
-        "Running": "🟢 Running",
-        "Stopped": "🔴 Stopped",
-        "Not Elevated": "🔵 Not Elevated",
-        "Unknown": "🟡 Unknown"
-    }.get(s, "🟡 Unknown")
+        "Running": "🟢",
+        "Stopped": "🔴",
+        "Unknown": "🟡",
+    }.get(status, "🟡")
+
+
+def web_status_text():
+    s = get_web_status()
+    port = get_web_port()
+    if s == "Running":
+        return f"{web_dot(s)} Web: Running  :{port}"
+    if s == "Stopped":
+        return f"{web_dot(s)} Web: Stopped  :{port}"
+    return f"{web_dot(s)} Web: Unknown  :{port}"
+
+
+def web_menu_text(_=None):
+    return web_status_text()
+
+
+def noop(_icon=None, _item=None):
+    return None
 
 # -------------------------
 # WEB SERVER MANAGEMENT
@@ -130,35 +178,42 @@ def status_text():
 web_process = None  # Global variable to track web server process
 
 def get_web_status():
-    web_config = config.get("web", {})
-    port = web_config.get("port", 8081)
+    port = get_web_port()
     logging.debug(f"Checking web server status on port {port}")
 
     try:
-        # Try to connect to the web server port
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
         result = sock.connect_ex(('127.0.0.1', port))
         sock.close()
         logging.debug(f"Port {port} connection result: {result}")
-
-        if result == 0:
-            logging.debug(f"Web server detected as Running on port {port}")
-            return "Running"
-        else:
-            logging.debug(f"Web server detected as Stopped (port {port} not responding)")
-            return "Stopped"
+        return "Running" if result == 0 else "Stopped"
     except Exception as e:
         logging.debug(f"Error checking web server status: {e}")
         return "Unknown"
 
-def web_status_text():
-    s = get_web_status()
-    return {
-        "Running": "🌐 Web: Running",
-        "Stopped": "🌐 Web: Stopped",
-        "Unknown": "🌐 Web: Unknown"
-    }.get(s, "🌐 Web: Unknown")
+
+def _kill_web_processes():
+    """Stop any python process whose command line includes web.py."""
+    killed = 0
+    try:
+        import pythoncom
+        import win32com.client
+        pythoncom.CoInitialize()
+        wmi = win32com.client.GetObject("winmgmts:")
+        for proc in wmi.ExecQuery(
+            "SELECT ProcessId, CommandLine FROM Win32_Process "
+            "WHERE Name='python.exe' OR Name='pythonw.exe'"
+        ):
+            cmd = proc.CommandLine or ""
+            if "web.py" in cmd:
+                logging.debug(f"Terminating web.py PID {proc.ProcessId}")
+                proc.Terminate()
+                killed += 1
+    except Exception as e:
+        logging.debug(f"WMI web stop failed: {e}")
+    return killed
+
 
 def start_web_server(icon, item):
     global web_process
@@ -198,6 +253,7 @@ def start_web_server(icon, item):
         else:
             logging.debug("Web server start failed - port not responding")
             icon.notify("Web server failed to start")
+        icon.update_menu()
     except Exception as e:
         logging.debug(f"Exception during web server start: {e}")
         icon.notify(f"Failed to start web server: {str(e)}")
@@ -227,11 +283,14 @@ def stop_web_server(icon, item):
             logging.debug("Web server process terminated")
             web_process = None
         else:
-            logging.debug("No active web server process found")
+            logging.debug("No tray-owned web process; scanning for web.py")
+            _kill_web_processes()
 
-        # Double-check if it's actually stopped
-        logging.debug("Waiting 1 second then checking final status...")
         time.sleep(1)
+        if get_web_status() != "Stopped":
+            _kill_web_processes()
+            time.sleep(1)
+
         final_status = get_web_status()
         logging.debug(f"Final web server status after stop attempt: {final_status}")
 
@@ -241,6 +300,7 @@ def stop_web_server(icon, item):
         else:
             logging.debug("Web server stop may have failed - still responding on port")
             icon.notify("Web server may still be running")
+        icon.update_menu()
     except Exception as e:
         logging.debug(f"Exception during web server stop: {e}")
         icon.notify(f"Error stopping web server: {str(e)}")
@@ -268,24 +328,47 @@ def open_web_interface(icon, item):
 
 def start_service(icon, item):
     if not is_elevated():
-        icon.notify("Tray app is not elevated — cannot control service")
+        icon.notify("Tray app is not elevated - cannot control service")
         return
     win32serviceutil.StartService(SERVICE_NAME)
     icon.notify("Service started")
+    icon.update_menu()
 
 def stop_service(icon, item):
     if not is_elevated():
-        icon.notify("Tray app is not elevated — cannot control service")
+        icon.notify("Tray app is not elevated - cannot control service")
         return
     win32serviceutil.StopService(SERVICE_NAME)
     icon.notify("Service stopped")
+    icon.update_menu()
 
 def restart_service(icon, item):
     if not is_elevated():
-        icon.notify("Tray app is not elevated — cannot control service")
+        icon.notify("Tray app is not elevated - cannot control service")
         return
     win32serviceutil.RestartService(SERVICE_NAME)
     icon.notify("Service restarted")
+    icon.update_menu()
+
+
+def _service_running(_item=None):
+    return is_elevated() and query_service_status() == "Running"
+
+
+def _service_stopped(_item=None):
+    return is_elevated() and query_service_status() == "Stopped"
+
+
+def _web_running(_item=None):
+    return get_web_status() == "Running"
+
+
+def _web_stopped(_item=None):
+    return get_web_status() != "Running"
+
+
+def explain_not_elevated(icon, _item=None):
+    icon.notify("Restart the tray as Administrator to start/stop the Windows service")
 
 def run_cleanup_now(icon, item):
     def combined_logger(msg):
@@ -324,65 +407,73 @@ def quit_app(icon, item):
 # -------------------------
 
 def status_watcher(icon):
-    last_status = None
+    last_key = None
 
     while icon.visible:
-        s = get_status()
+        icon_status = get_status()
+        svc = query_service_status()
+        web = get_web_status()
+        key = (icon_status, svc, web)
 
-        # Debug logging
         if ENABLE_DEBUG:
-            logging.debug(f"Service status: {s}")
+            logging.debug(f"Service={svc} icon={icon_status} web={web}")
 
-        # Only recreate icon when status changes
-        if s != last_status:
-            color = COLOR_MAP.get(s, "yellow")
-            new_icon = fresh_icon(color)
-            icon.icon = new_icon
-            # Force update
+        if key != last_key:
+            color = COLOR_MAP.get(icon_status, "yellow")
+            icon.icon = fresh_icon(color)
             icon.update_menu()
-            last_status = s
-
+            last_key = key
             if ENABLE_DEBUG:
-                logging.debug(f"Updated icon to color: {color} for status: {s}")
+                logging.debug(f"Updated icon to {color}")
 
-        icon.title = f"qBittorrent Cleaner ({status_text()})"
-
+        icon.title = f"qBittorrent Cleaner  {status_text()}  |  {web_status_text()}"
         time.sleep(1)
 
 # -------------------------
 # TRAY ICON SETUP
 # -------------------------
 
+def iter_menu():
+    yield item(service_menu_text, noop)
+    yield item(web_menu_text, open_web_interface)
+    if not is_elevated():
+        yield item("🔵  Tray not elevated", explain_not_elevated)
+    yield pystray.Menu.SEPARATOR
+    yield item("Open web interface", open_web_interface, default=True)
+    yield item("Run cleanup now", run_cleanup_now)
+    yield pystray.Menu.SEPARATOR
+    yield item("Service", pystray.Menu(
+        item("Start", start_service, enabled=_service_stopped),
+        item("Stop", stop_service, enabled=_service_running),
+        item("Restart", restart_service, enabled=_service_running),
+    ))
+    yield item("Web", pystray.Menu(
+        item("Start", start_web_server, enabled=_web_stopped),
+        item("Stop", stop_web_server, enabled=_web_running),
+        pystray.Menu.SEPARATOR,
+        item("Open in browser", open_web_interface),
+    ))
+    yield item("Open", pystray.Menu(
+        item("Log file", open_log),
+        item("rules.yaml", open_rules),
+        item("Install folder", open_folder),
+    ))
+    yield pystray.Menu.SEPARATOR
+    yield item("Quit", quit_app)
+
+
 icon = pystray.Icon(
     "QBCleaner",
     fresh_icon("yellow"),
-    title=f"qBittorrent Cleaner (Service: {status_text()} | {web_status_text()})",
-    menu=pystray.Menu(
-        item(lambda _: f"Service: {status_text()}", None, enabled=False),
-        item(lambda _: f"{web_status_text()}", None, enabled=False),
-        item("---", None, enabled=False),  # Separator
-        item("Run Cleanup Now", run_cleanup_now),
-        item("Refresh Status", lambda icon, item: None),  # Placeholder for refresh
-        item("---", None, enabled=False),  # Separator
-        item("Start Service", start_service),
-        item("Stop Service", stop_service),
-        item("Restart Service", restart_service),
-        item("---", None, enabled=False),  # Separator
-        item("Start Web Server", start_web_server),
-        item("Stop Web Server", stop_web_server),
-        item("Open Web Interface", open_web_interface),
-        item("---", None, enabled=False),  # Separator
-        item("Open Log File", open_log),
-        item("View Config File", open_rules),
-        item("Open Folder", open_folder),
-        item("Quit", quit_app)
-    )
+    title=f"qBittorrent Cleaner  {status_text()}  |  {web_status_text()}",
+    menu=pystray.Menu(iter_menu),
 )
 
 def start_watcher_after_icon():
     time.sleep(0.5)
     threading.Thread(target=status_watcher, args=(icon,), daemon=True).start()
 
-threading.Thread(target=start_watcher_after_icon, daemon=True).start()
 
-icon.run()
+if __name__ == "__main__":
+    threading.Thread(target=start_watcher_after_icon, daemon=True).start()
+    icon.run()
