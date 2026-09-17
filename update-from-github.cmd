@@ -42,16 +42,13 @@ set "UPDLOG=%~dp0logs\update\self-update.log"
 echo.>> "%UPDLOG%"
 echo ===== %DATE% %TIME% update-from-github.cmd =====>> "%UPDLOG%"
 echo Using "%PY%">> "%UPDLOG%"
-echo Dest "%~dp0">> "%UPDLOG%"
-
-set "DEST=%~dp0"
-if "%DEST:~-1%"=="\" set "DEST=%DEST:~0,-1%"
+echo Dest is the folder that contains this script (no --dest; avoids trailing-backslash quoting).>> "%UPDLOG%"
 
 echo Using "%PY%"
-echo Downloading latest GitHub release and installing into "%DEST%"
+echo Downloading latest GitHub release into this folder
 echo Log: "%UPDLOG%"
 echo.
-"%PY%" "%~dp0self_update.py" --apply --dest "%DEST%" --python "%PY%" --start-web
+"%PY%" "%~dp0self_update.py" --apply
 set "ERR=%ERRORLEVEL%"
 
 echo.

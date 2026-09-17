@@ -187,10 +187,23 @@ def start_web_ui(dest, python):
     return False
 
 
+def _clean_dest(dest):
+    """Strip cmd quoting accidents like: C:\\qBittorrent Cleaner\" --python ..."""
+    dest = (dest or "").strip().strip('"').strip("'")
+    for marker in (" --", " -Python", " -Source"):
+        if marker in dest:
+            dest = dest.split(marker, 1)[0].strip().strip('"')
+    dest = dest.rstrip("\\/")
+    return os.path.abspath(dest)
+
+
 def apply_update(dest, python=None, force=False, start_web=True):
-    dest = os.path.abspath(dest.rstrip('\\/'))
+    raw_dest = dest
+    dest = _clean_dest(dest)
     python = python or sys.executable
-    log.info("Apply update dest=%s python=%s force=%s start_web=%s", dest, python, force, start_web)
+    log.info("Apply update raw_dest=%r dest=%s python=%s force=%s start_web=%s", raw_dest, dest, python, force, start_web)
+    if not os.path.isdir(dest):
+        raise RuntimeError(f"Install folder does not exist: {dest}")
     result = download_latest(force=force)
     if result.get("skipped"):
         log.info(result["message"])
