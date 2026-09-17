@@ -9,9 +9,15 @@
     {% if update and update.update_available %}
     <div class="alert alert-info">
         <strong>Update available:</strong> {{ update.local }} → {{ update.latest }}.
+        {% if local_client %}
         <button type="button" class="btn btn-sm btn-primary ms-2" onclick="installGithubUpdate()">Install now</button>
+        {% endif %}
         <a class="ms-2" href="{{ update.release_url }}" target="_blank" rel="noopener">Open GitHub release</a>
+        {% if local_client %}
         <span class="d-block small mt-2">Installs from GitHub, keeps <code>rules.yaml</code>, <code>logs\</code>, and <code>data\</code>. Accept UAC if prompted.</span>
+        {% else %}
+        <span class="d-block small mt-2">You are browsing this UI remotely. Run <code>update-from-github.cmd</code> or tray → <strong>Install GitHub update</strong> on the server. Remote install is not supported yet (UAC and restarting this web process).</span>
+        {% endif %}
     </div>
     {% endif %}
 

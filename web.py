@@ -270,6 +270,11 @@ def get_deletion_stats():
     except Exception as e:
         return {"last_24h": 0, "last_30d": 0}
 
+def is_local_client(request: Request):
+    host = (request.client.host if request.client else "") or ""
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
 def load_config():
     with open(RULES_PATH, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -300,6 +305,7 @@ def dashboard(request: Request, auth=Depends(authenticate)):
         deletion_stats=deletion_stats,
         schedule=schedule_status,
         update=update,
+        local_client=is_local_client(request),
         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     )
     return HTMLResponse(content=html_content)
@@ -504,7 +510,12 @@ def updates_api(refresh: int = 0, auth=Depends(authenticate)):
 
 
 @app.post("/api/updates/install")
-def install_github_update_api(auth=Depends(authenticate)):
+def install_github_update_api(request: Request, auth=Depends(authenticate)):
+    if not is_local_client(request):
+        return {
+            "status": "error",
+            "message": "Install from the web UI only works on the machine running qBittorrent Cleaner. On this server use the tray (Install GitHub update) or double-click update-from-github.cmd.",
+        }
     cmd = os.path.join(BASE_DIR, "update-from-github.cmd")
     if not os.path.isfile(cmd):
         return {"status": "error", "message": "update-from-github.cmd is missing"}
