@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from logging.handlers import TimedRotatingFileHandler
 
 from paths import (
@@ -26,14 +27,90 @@ def _has_handler_for(logger, path):
     return False
 
 
+class SharedTimedRotatingFileHandler(TimedRotatingFileHandler):
+    """Daily log that keeps writing when midnight rotation cannot rename the file.
+
+    The service, tray, and web UI log to the same files. TimedRotatingFileHandler
+    holds the file open, so on Windows the midnight rename fails, the stream is
+    left closed, and that process never writes another line.
+    """
+
+    def __init__(self, filename, backup_count):
+        super().__init__(
+            filename,
+            when="midnight",
+            interval=1,
+            backupCount=backup_count,
+            encoding="utf-8",
+            delay=True,
+        )
+
+    def emit(self, record):
+        try:
+            if int(time.time()) >= self.rolloverAt:
+                self._rollover()
+            self._append(record)
+        except Exception:
+            self.handleError(record)
+
+    def _append(self, record):
+        if self.stream is None:
+            self.stream = self._open()
+        try:
+            logging.FileHandler.emit(self, record)
+            self.stream.flush()
+        finally:
+            self._close_stream()
+
+    def _close_stream(self):
+        stream = self.stream
+        self.stream = None
+        if stream is None:
+            return
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+    def _archive_name(self, current_time):
+        started = self.rolloverAt - self.interval
+        if self.utc:
+            time_tuple = time.gmtime(started)
+        else:
+            time_tuple = time.localtime(started)
+            dst_now = time.localtime(current_time)[-1]
+            dst_then = time_tuple[-1]
+            if dst_now != dst_then:
+                addend = 3600 if dst_now else -3600
+                time_tuple = time.localtime(started + addend)
+        return self.rotation_filename(
+            self.baseFilename + "." + time.strftime(self.suffix, time_tuple)
+        )
+
+    def _rollover(self):
+        # Drop our handle first. Another process can still block the rename;
+        # in that case leave rolloverAt alone and retry on the next line.
+        self._close_stream()
+        current_time = int(time.time())
+        archive = self._archive_name(current_time)
+        try:
+            if os.path.exists(self.baseFilename) and not os.path.exists(archive):
+                os.rename(self.baseFilename, archive)
+            if self.backupCount > 0:
+                for old in self.getFilesToDelete():
+                    try:
+                        os.remove(old)
+                    except OSError:
+                        pass
+        except OSError:
+            return
+        self.rolloverAt = self.computeRollover(current_time)
+        while self.rolloverAt <= current_time:
+            self.rolloverAt += self.interval
+
+
 def _file_handler(path, max_days):
-    handler = TimedRotatingFileHandler(
-        path,
-        when="midnight",
-        interval=1,
-        backupCount=max_days,
-        encoding="utf-8",
-    )
+    handler = SharedTimedRotatingFileHandler(path, max_days)
     handler.setFormatter(_FORMAT)
     return handler
 
