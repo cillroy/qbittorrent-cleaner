@@ -1,7 +1,8 @@
-# rules.yaml
+# rules.example.yaml - template. Copy to rules.yaml (install does this when rules.yaml
+# is missing) and put your real settings there. rules.yaml is git-ignored.
 
 qbittorrent:
-  # url: "http://127.0.0.1:8080"
+  url: "http://127.0.0.1:8080"
   # username: "admin"
   # password: "adminadmin"
 

@@ -5,7 +5,7 @@ A rule-driven cleanup system for qBittorrent on Windows. It includes:
 - A **Windows Service** that runs cleanup rules on a configurable interval
 - A **tray app** to watch status and start/stop the service and web UI
 - A **web UI** for dashboard, rules, scheduler, logs, and settings
-- **`rules.yaml`** for qBittorrent connection, schedule, web auth, and rules
+- **`rules.yaml`** for qBittorrent connection, schedule, web auth, and rules (created from the shipped `rules.example.yaml`)
 
 Built for setups (Sonarr, Radarr, Lidarr, etc.) where torrents pile up and need predictable cleanup.
 
@@ -73,14 +73,15 @@ qBittorrent Cleaner/
 ├── tray.py                                  # tray app
 ├── web.py                                   # FastAPI web UI
 ├── templates/                               # HTML pages
-├── rules.yaml                               # your config (never overwritten by update)
+├── rules.example.yaml                       # template shipped in the repo/release
+├── rules.yaml                               # your config (git-ignored, never overwritten by update)
 ├── QBCleanerTray.xml                        # optional logon task for the tray
 ├── VERSION                                  # shipped version
 ├── version.py / update_check.py             # local version + GitHub latest check
 └── requirements.txt
 ```
 
-Runtime files (created as needed, not overwritten by update): `rules.yaml`, `logs/`, `data/`.
+Runtime files (created as needed, not overwritten by update): `rules.yaml`, `logs/`, `data/`. The repo only ships `rules.example.yaml`; `rules.yaml` is in `.gitignore` so real hosts and passwords never get committed.
 
 ---
 
@@ -133,7 +134,7 @@ cleanup.cmd          # organize leftover root logs (needs paths.py)
 1. Stop the service and `web.py`
 2. Backup program files under `.backup\<timestamp>\`
 3. Copy new code **unless** you already copied into the same folder (in-place)
-4. Leave `rules.yaml`, logs, and `schedule_state.json` alone
+4. Leave `rules.yaml`, logs, and `schedule_state.json` alone (if `rules.yaml` is missing, copy `rules.example.yaml` to it; an existing one is never overwritten)
 5. Insert a `schedule:` block if `rules.yaml` does not have one, and a disabled `notifications:` block if it has none
 6. `pip install -r requirements.txt`
 7. Start the Windows service
@@ -181,11 +182,13 @@ Tray → **Web → Restart** bounces `web.py`. **Check for updates** compares `V
 
 The service reloads this every cycle. Update never overwrites an existing file.
 
+Start from `rules.example.yaml`: copy it to `rules.yaml` (install does this for you when `rules.yaml` is missing), then set your qBittorrent URL and change the `change-me` web password. `rules.yaml` is git-ignored; do not commit it.
+
 ```yaml
 qbittorrent:
   url: "http://127.0.0.1:8080"
   username: "admin"          # optional
-  password: "adminadmin"     # optional
+  password: "change-me"      # optional
 
 logging:
   max_days: 30
@@ -281,7 +284,7 @@ setx /M QB_CLEANER_SMTP_PASSWORD "abcd efgh ijkl mnop"
 
 **Web UI:** **Settings → Email Alerts** edits the same keys. The password box never shows the saved password; leave it blank to keep it, or tick **Clear saved password**. **Send test email** sends one message with the values currently on the page (saved or not), so you can check them before saving.
 
-`rules.yaml` holds credentials. Keep your real one out of source control; updates never overwrite it.
+`rules.yaml` holds credentials. It is git-ignored (the repo ships `rules.example.yaml` with placeholders); updates never overwrite it.
 
 ### Match operators the engine actually uses
 

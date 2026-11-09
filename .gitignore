@@ -10,3 +10,5 @@ tray-crash.log
 tray-debug.log
 qb-cleaner.log*
 qb-schedule.log*
+# local config with real hosts/passwords; the repo ships rules.example.yaml
+rules.yaml

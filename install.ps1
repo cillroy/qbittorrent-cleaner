@@ -80,7 +80,8 @@ $CodeFiles = @(
     'cleanup.cmd',
     'self_update.py',
     'notify_email.py',
-    'update-from-github.cmd'
+    'update-from-github.cmd',
+    'rules.example.yaml'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
 function Write-Ok($message)   { Write-Host "   OK  $message" -ForegroundColor Green }
@@ -307,18 +308,26 @@ function Copy-Code([string]$source, [string]$dest) {
 }
 
 function Ensure-RulesFile([string]$source, [string]$dest) {
+    # Never overwrites an existing rules.yaml. Only seeds one from the template when missing.
     $destRules = Join-Path $dest 'rules.yaml'
     if (Test-Path -LiteralPath $destRules) {
         Write-Info "Keeping existing rules.yaml"
         return
     }
-    $srcRules = Join-Path $source 'rules.yaml'
-    Write-Step "No rules.yaml at dest; copying the template"
+    $candidates = @(
+        (Join-Path $source 'rules.example.yaml'),
+        (Join-Path $dest 'rules.example.yaml'),
+        (Join-Path $source 'rules.yaml')
+    )
+    $template = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    Write-Step "No rules.yaml at dest; copying the template (rules.example.yaml)"
     if ($DryRun) { return }
-    if (-not (Test-Path -LiteralPath $srcRules)) {
-        throw "rules.yaml not found in source or dest"
+    if (-not $template) {
+        throw "rules.example.yaml not found in source or dest"
     }
-    Copy-Item -LiteralPath $srcRules -Destination $destRules -Force
+    if (Test-Path -LiteralPath $destRules) { return }
+    Copy-Item -LiteralPath $template -Destination $destRules
+    Write-Warn "Created rules.yaml from the template. Edit it (qBittorrent URL, web password) before relying on it."
 }
 
 function Ensure-ScheduleBlock([string]$rulesPath) {
@@ -626,7 +635,7 @@ switch ($Action) {
 
         $port = Get-WebPort (Join-Path $Dest 'rules.yaml')
         if (-not (Test-Path -LiteralPath (Join-Path $Dest 'rules.yaml'))) {
-            $port = Get-WebPort (Join-Path $Source 'rules.yaml')
+            $port = Get-WebPort (Join-Path $Source 'rules.example.yaml')
         }
         $webWasRunning = Test-PortOpen $port
 
