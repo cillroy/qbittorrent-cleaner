@@ -9,7 +9,7 @@ A rule-driven cleanup system for qBittorrent on Windows. It includes:
 
 Built for setups (Sonarr, Radarr, Lidarr, etc.) where torrents pile up and need predictable cleanup.
 
-**Built by [cwhateverc](https://cwhateverc.com)** · [cwhateverc.com](https://cwhateverc.com) · [support@cwhateverc.com](mailto:support@cwhateverc.com)
+**Built by [cwhateverc](https://cwhateverc.com)** · [support@cwhateverc.com](mailto:support@cwhateverc.com)
 
 Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbittorrent-cleaner) · current version is in `VERSION`
 
@@ -335,26 +335,6 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | Notifications show old color | Stale tray | Quit tray, run `start-tray.cmd` |
 | No alert email | Alerts disabled, threshold not reached, or SMTP error | **Settings → Send test email**; look for `Email alert:` lines in the action log |
 | Gmail `535` / `Username and Password not accepted` | Normal password used, or app password revoked | Create a new Gmail app password |
-
----
-
-# Releases (Azure DevOps → GitHub)
-
-Azure DevOps is the source of truth. The pipeline mirrors `master` to GitHub `main` on every push. If `VERSION` is new (for example `1.0.0`), it also creates GitHub release `v1.0.0`. Later pushes with the same `VERSION` skip creating another release.
-
-1. Set `VERSION` and commit on `master`.
-2. `git push origin master`
-3. The pipeline validates, pushes to GitHub, then creates [github.com/cillroy/qbittorrent-cleaner/releases](https://github.com/cillroy/qbittorrent-cleaner/releases) when that version does not exist yet.
-
-The web UI and tray compare local `VERSION` to GitHub `releases/latest`. To apply:
-
-```bat
-update-from-github.cmd
-```
-
-That downloads the release zip, runs `install.ps1 update` from it, and leaves `rules.yaml`, `logs\`, and `data\` alone. Tray **Install GitHub update** and Dashboard **Install now** start the same script (UAC). Restart the tray afterward.
-
-Do not tag every commit — only builds you want people to install.
 
 ---
 
