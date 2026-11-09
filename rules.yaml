@@ -20,6 +20,23 @@ web:
   password: "change-me"
   enable_auth: true
 
+notifications:
+  email:
+    # Email when cleanup fails failure_threshold runs in a row (off by default).
+    enabled: false
+    smtp_host: "smtp.example.com"
+    smtp_port: 587
+    starttls: true             # STARTTLS on port 587
+    use_ssl: false             # true for implicit TLS (usually port 465)
+    username: "user@example.com"
+    password: ""               # blank = read env var named in password_env
+    password_env: "QB_CLEANER_SMTP_PASSWORD"
+    from_address: "user@example.com"
+    to: ["user@example.com"]
+    failure_threshold: 10      # consecutive failed runs before emailing
+    cooldown_hours: 6          # at most one failure email per this many hours
+    send_recovery: true        # one email when cleanup works again
+
 rules:
   - name: "Auto-clean inactive labeled torrents : >=40 days"
     match:

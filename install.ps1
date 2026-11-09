@@ -5,8 +5,9 @@
 .DESCRIPTION
   Copies program files to the production folder, installs Python deps,
   and (re)starts the Windows service. Never overwrites rules.yaml, logs,
-  or schedule_state.json. If rules.yaml has no schedule: block yet, one
-  is inserted without rewriting the rest of the file.
+  or schedule_state.json. If rules.yaml has no schedule: or
+  notifications: block yet, one is inserted without rewriting the rest
+  of the file (email alerts stay disabled until you configure them).
 
 .PARAMETER Action
   install   First-time setup (copy files, pip, install + start service).
@@ -78,6 +79,7 @@ $CodeFiles = @(
     'paths.py',
     'cleanup.cmd',
     'self_update.py',
+    'notify_email.py',
     'update-from-github.cmd'
 )
 function Write-Step($message) { Write-Host ">> $message" -ForegroundColor Cyan }
@@ -345,6 +347,45 @@ schedule:
     Write-Ok "schedule block added"
 }
 
+function Ensure-NotificationsBlock([string]$rulesPath) {
+    if (-not (Test-Path -LiteralPath $rulesPath)) { return }
+    $text = [IO.File]::ReadAllText($rulesPath)
+    if ($text -match '(?m)^notifications\s*:') {
+        Write-Info "rules.yaml already has a notifications block"
+        return
+    }
+    Write-Step "Inserting disabled notifications: block into rules.yaml (comments preserved)"
+    $block = @"
+
+notifications:
+  email:
+    # Email when cleanup fails failure_threshold runs in a row (off by default).
+    enabled: false
+    smtp_host: "smtp.example.com"
+    smtp_port: 587
+    starttls: true             # STARTTLS on port 587
+    use_ssl: false             # true for implicit TLS (usually port 465)
+    username: "user@example.com"
+    password: ""               # blank = read env var named in password_env
+    password_env: "QB_CLEANER_SMTP_PASSWORD"
+    from_address: "user@example.com"
+    to: ["user@example.com"]
+    failure_threshold: 10      # consecutive failed runs before emailing
+    cooldown_hours: 6          # at most one failure email per this many hours
+    send_recovery: true        # one email when cleanup works again
+
+"@
+    if ($text -match '(?m)^rules\s*:') {
+        $text = [regex]::Replace($text, '(?m)^rules\s*:', ($block.TrimEnd() + "`r`n`r`nrules:"), 1)
+    } else {
+        $text = $text.TrimEnd() + "`r`n" + $block
+    }
+    if ($DryRun) { return }
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [IO.File]::WriteAllText($rulesPath, $text, $utf8)
+    Write-Ok "notifications block added (email alerts disabled until you configure them)"
+}
+
 function Install-PythonDeps([string]$pythonExe, [string]$dest) {
     $req = Join-Path $dest 'requirements.txt'
     Write-Step "Installing Python packages ($pythonExe -m pip)"
@@ -601,6 +642,7 @@ switch ($Action) {
         Copy-Code $Source $Dest
         Ensure-RulesFile $Source $Dest
         Ensure-ScheduleBlock (Join-Path $Dest 'rules.yaml')
+        Ensure-NotificationsBlock (Join-Path $Dest 'rules.yaml')
         Install-PythonDeps $pythonExe $Dest
         Start-CleanerService $pythonExe $Dest
         Register-TrayTaskIfRequested $pythonExe $Dest

@@ -5,6 +5,7 @@ import time
 import os
 from datetime import datetime
 from qb_api import QBClient
+from notify_email import record_cleanup_result
 
 class Cleaner:
     def __init__(self, config_path="rules.yaml", logger=print, schedule_logger=None, notifier=None):
@@ -103,11 +104,11 @@ class Cleaner:
     def run(self, source="service"):
         from schedule import load_schedule_config, record_run
 
-        self.reload_config()
         deleted = 0
         error = None
         self.schedule_logger(f"Cleanup run started (source={source})")
         try:
+            self.reload_config()
             torrents = self.client.get_torrents()
             rules = self.config.get("rules") or []
 
@@ -148,6 +149,13 @@ class Cleaner:
                 )
             except Exception as e:
                 self.logger(f"Failed to update schedule state: {e}")
+            # Email alert after N consecutive failures (never raises).
+            record_cleanup_result(
+                success=(error is None),
+                error=error,
+                config=self.config,
+                logger=self.logger,
+            )
 
     def run_once(self, source="manual"):
         self.run(source=source)

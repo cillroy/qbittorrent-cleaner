@@ -12,6 +12,7 @@ from plyer import notification
 from cleaner import Cleaner
 from schedule import seconds_until_next_run, record_run
 from logutil import setup_logging
+from notify_email import record_cleanup_result
 
 # -------------------------
 # LOGGING SETUP
@@ -111,6 +112,7 @@ class QBCleanerService(win32serviceutil.ServiceFramework):
                     record_run(source="service", deleted=0, error=str(e), scheduled=True)
                 except Exception:
                     pass
+                record_cleanup_result(success=False, error=e, logger=log)
                 if self._wait(5000):
                     log("Stop event received, exiting service loop")
                     break

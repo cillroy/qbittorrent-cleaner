@@ -24,6 +24,7 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 - Interval comes from `schedule:` in `rules.yaml` (not hardcoded)
 - Daily log rotation, configurable retention
 - Toast notifications on deletions
+- Optional **email alerts** when cleanup keeps failing (SMTP, standard library only)
 - Windows Event Log gets **action** events only (not every schedule tick)
 
 ### Tray
@@ -42,7 +43,7 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 - **Rules** — add / edit / delete
 - **Scheduler** — next run countdown, last run, interval, pause, run now
 - **Logs** — **Actions** vs **Schedule** tabs
-- **Settings** — qBittorrent, web, logging
+- **Settings** — qBittorrent, web, logging, email alerts (with **Send test email**)
 - **Help** — short in-app guide, support contacts, GitHub
 - HTTP basic auth (optional)
 
@@ -67,6 +68,7 @@ qBittorrent Cleaner/
 ├── cleaner.py                               # rule engine
 ├── schedule.py                              # interval + last/next run state
 ├── logutil.py                               # action vs schedule loggers
+├── notify_email.py                          # optional SMTP failure alerts
 ├── service.py                               # Windows service
 ├── tray.py                                  # tray app
 ├── web.py                                   # FastAPI web UI
@@ -132,7 +134,7 @@ cleanup.cmd          # organize leftover root logs (needs paths.py)
 2. Backup program files under `.backup\<timestamp>\`
 3. Copy new code **unless** you already copied into the same folder (in-place)
 4. Leave `rules.yaml`, logs, and `schedule_state.json` alone
-5. Insert a `schedule:` block if `rules.yaml` does not have one
+5. Insert a `schedule:` block if `rules.yaml` does not have one, and a disabled `notifications:` block if it has none
 6. `pip install -r requirements.txt`
 7. Start the Windows service
 8. Start the web UI only if it was already running (`-StartWeb` to force it)
@@ -211,6 +213,76 @@ rules:
 
 Change the interval on the **Scheduler** page; the service picks it up on the next wake (about a second).
 
+### Email alerts (`notifications.email`)
+
+Optional. When enabled, the cleaner emails you if cleanup **fails several runs in a row** — for example qBittorrent is stopped, unreachable, or rejects the login (`403 Forbidden`). It is off by default.
+
+```yaml
+notifications:
+  email:
+    enabled: false
+    smtp_host: "smtp.example.com"
+    smtp_port: 587
+    starttls: true             # STARTTLS on port 587
+    use_ssl: false             # true for implicit TLS (usually port 465)
+    username: "user@example.com"
+    password: ""               # blank = read env var named in password_env
+    password_env: "QB_CLEANER_SMTP_PASSWORD"
+    from_address: "user@example.com"
+    to: ["user@example.com"]
+    failure_threshold: 10      # consecutive failed runs before emailing
+    cooldown_hours: 6          # at most one failure email per this many hours
+    send_recovery: true        # one email when cleanup works again
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | Turn email alerts on |
+| `smtp_host` / `smtp_port` | `smtp.example.com` / `587` | Your mail server |
+| `starttls` | `true` | Upgrade the connection with STARTTLS (port 587) |
+| `use_ssl` | `false` | Implicit TLS instead (port 465); overrides `starttls` |
+| `username` / `password` | blank | SMTP login. Leave `username` blank for servers without auth |
+| `password_env` | `QB_CLEANER_SMTP_PASSWORD` | If `password` is blank, read it from this environment variable (set it machine-wide so the service sees it) |
+| `from_address` | `username` | Sender address |
+| `to` | `[]` | One or more recipients (list, or comma-separated in the web UI) |
+| `failure_threshold` | `10` | Consecutive failed runs before the first email |
+| `cooldown_hours` | `6` | Never send failure emails closer together than this |
+| `send_recovery` | `true` | Send one "recovered" email after an alerted outage ends |
+
+**How it decides to email**
+
+- Every cleanup run (service, web **Run now**, tray) counts as a success or a failure. Failure streaks are kept in `data/email_alert_state.json`.
+- With the default `interval_seconds: 30` and `failure_threshold: 10`, the first email goes out after about **5 minutes** of continuous failures. A short blip (a qBittorrent restart, a VPN reconnect) never emails.
+- **One email per outage.** After the alert, nothing more is sent until a run succeeds. If `send_recovery` is on you then get one "recovered" email.
+- `cooldown_hours` stops a flapping qBittorrent from sending an email every few minutes: a new outage within the cooldown is logged but not emailed until the cooldown has passed.
+- If the email itself cannot be sent, the error goes to `logs/actions/qb-cleaner.log` and the cleaner keeps running; it retries at most every 10 minutes while the outage lasts.
+
+**Gmail example** (use an [app password](https://myaccount.google.com/apppasswords), not your normal password; it needs 2-Step Verification):
+
+```yaml
+notifications:
+  email:
+    enabled: true
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    starttls: true
+    use_ssl: false
+    username: "your.name@gmail.com"
+    password: "abcd efgh ijkl mnop"   # 16-character app password
+    from_address: "your.name@gmail.com"
+    to: ["you@example.com"]
+```
+
+To keep the password out of `rules.yaml`, leave `password: ""` and set a machine environment variable (elevated), then restart the service:
+
+```bat
+setx /M QB_CLEANER_SMTP_PASSWORD "abcd efgh ijkl mnop"
+```
+
+**Web UI:** **Settings → Email Alerts** edits the same keys. The password box never shows the saved password; leave it blank to keep it, or tick **Clear saved password**. **Send test email** sends one message with the values currently on the page (saved or not), so you can check them before saving.
+
+`rules.yaml` holds credentials. Keep your real one out of source control; updates never overwrite it.
+
 ### Match operators the engine actually uses
 
 | Operator | Meaning |
@@ -249,6 +321,7 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | `logs/update/self-update.log` | GitHub download/install (`update-from-github.cmd`) |
 | `data/schedule_state.json` | Last/next run timestamps |
 | `data/update_check_cache.json` | Cached GitHub latest-release check |
+| `data/email_alert_state.json` | Failure streak and last email alert time |
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
@@ -260,6 +333,8 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |
 | Cleanup not happening | Rule mismatch, or schedule paused | Scheduler page + action log |
 | Notifications show old color | Stale tray | Quit tray, run `start-tray.cmd` |
+| No alert email | Alerts disabled, threshold not reached, or SMTP error | **Settings → Send test email**; look for `Email alert:` lines in the action log |
+| Gmail `535` / `Username and Password not accepted` | Normal password used, or app password revoked | Create a new Gmail app password |
 
 ---
 

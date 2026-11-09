@@ -26,6 +26,13 @@ from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
 from paths import LOGS_DIR, ACTIONS_LOG_DIR, migrate_legacy_files
 from version import read_local_version
 from update_check import check_for_update
+from notify_email import (
+    load_email_config,
+    load_alert_state,
+    send_test_email,
+    split_addresses,
+    validate_email_config,
+)
 
 # -------------------------
 # CONFIGURATION
@@ -531,12 +538,84 @@ def install_github_update_api(request: Request, auth=Depends(authenticate)):
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, auth=Depends(authenticate)):
+    current = load_config()
+    email_cfg = load_email_config(current)
     template = jinja_env.get_template("settings.html")
-    html_content = template.render(config=load_config())
+    html_content = template.render(
+        config=current,
+        email=email_cfg,
+        email_password_set=bool(email_cfg.get("password")),
+        email_password_from_env=bool(email_cfg.get("password")) and not email_cfg.get("password_saved"),
+        email_state=load_alert_state(),
+    )
     return HTMLResponse(content=html_content)
 
+
+def _email_block_from_form(existing, form):
+    """Merge posted email fields over the saved notifications.email block.
+
+    A blank password field keeps the saved password (the UI never shows it).
+    """
+    block = dict(existing or {})
+    block["enabled"] = form.get("email_enabled") == "on"
+    block["smtp_host"] = (form.get("email_smtp_host") or "").strip()
+    try:
+        block["smtp_port"] = int(form.get("email_smtp_port") or 587)
+    except ValueError:
+        block["smtp_port"] = 587
+    security = form.get("email_security") or "starttls"
+    block["starttls"] = security == "starttls"
+    block["use_ssl"] = security == "ssl"
+    block["username"] = (form.get("email_username") or "").strip()
+    new_password = form.get("email_password") or ""
+    if form.get("email_password_clear") == "on":
+        block["password"] = ""
+    elif new_password:
+        block["password"] = new_password
+    else:
+        block.setdefault("password", "")
+    block["from_address"] = (form.get("email_from") or "").strip()
+    block["to"] = split_addresses(form.get("email_to") or "")
+    try:
+        block["failure_threshold"] = max(1, int(form.get("email_failure_threshold") or 10))
+    except ValueError:
+        block["failure_threshold"] = 10
+    try:
+        block["cooldown_hours"] = max(0.0, float(form.get("email_cooldown_hours") or 6))
+    except ValueError:
+        block["cooldown_hours"] = 6
+    if block["cooldown_hours"] == int(block["cooldown_hours"]):
+        block["cooldown_hours"] = int(block["cooldown_hours"])
+    block["send_recovery"] = form.get("email_send_recovery") == "on"
+    block.setdefault("password_env", "QB_CLEANER_SMTP_PASSWORD")
+    return block
+
+
+@app.post("/api/notifications/test-email")
+async def test_email_api(request: Request, auth=Depends(authenticate)):
+    """Send a test email using the form values (unsaved edits included)."""
+    try:
+        form = await request.form()
+        current = load_config()
+        existing = ((current.get("notifications") or {}).get("email")) or {}
+        if "email_smtp_host" in form:
+            block = _email_block_from_form(existing, form)
+        else:
+            block = existing
+        cfg = load_email_config({"notifications": {"email": block}})
+        problems = validate_email_config(cfg)
+        if problems:
+            return {"status": "error", "message": "; ".join(problems)}
+        send_test_email(cfg)
+        logger.info(f"Test email sent to {', '.join(cfg['to'])}")
+        return {"status": "success", "message": f"Test email sent to {', '.join(cfg['to'])}"}
+    except Exception as e:
+        logger.info(f"Test email failed: {e}")
+        return {"status": "error", "message": f"Test email failed: {e}"}
+
 @app.post("/settings")
-def update_settings(
+async def update_settings(
+    request: Request,
     qb_url: str = Form(...),
     qb_username: str = Form(""),
     qb_password: str = Form(""),
@@ -566,6 +645,15 @@ def update_settings(
     current.setdefault("logging", {})
     current["logging"]["max_days"] = max_days
     current["logging"]["enable_notifications"] = enable_notifications
+
+    form = await request.form()
+    if "email_smtp_host" in form:
+        current.setdefault("notifications", {})
+        if not isinstance(current["notifications"], dict):
+            current["notifications"] = {}
+        current["notifications"]["email"] = _email_block_from_form(
+            current["notifications"].get("email"), form
+        )
 
     save_config(current)
 

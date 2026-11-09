@@ -8,7 +8,7 @@
         <h2><i class="fas fa-cog"></i> Settings</h2>
 
         {% if config %}
-        <form method="post">
+        <form method="post" id="settingsForm">
             <div class="row">
                 <div class="col-md-6">
                     <div class="card mb-4">
@@ -76,6 +76,118 @@
             </div>
 
             <div class="row">
+                <div class="col-12">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5><i class="fas fa-envelope"></i> Email Alerts</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted">
+                                Sends one email when cleanup fails several runs in a row (for example qBittorrent is down
+                                or rejects the login), and optionally one when it recovers. Short blips do not email.
+                            </p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="email_enabled" name="email_enabled"
+                                               {% if email.enabled %}checked{% endif %}>
+                                        <label class="form-check-label" for="email_enabled">Enable email alerts</label>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="email_smtp_host" class="form-label">SMTP server</label>
+                                        <input type="text" class="form-control" id="email_smtp_host" name="email_smtp_host"
+                                               value="{{ email.smtp_host|e }}" placeholder="smtp.example.com">
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-6 mb-3">
+                                            <label for="email_smtp_port" class="form-label">Port</label>
+                                            <input type="number" class="form-control" id="email_smtp_port" name="email_smtp_port"
+                                                   value="{{ email.smtp_port }}" min="1" max="65535">
+                                        </div>
+                                        <div class="col-6 mb-3">
+                                            <label for="email_security" class="form-label">Security</label>
+                                            <select class="form-select" id="email_security" name="email_security">
+                                                <option value="starttls" {% if email.starttls and not email.use_ssl %}selected{% endif %}>STARTTLS (587)</option>
+                                                <option value="ssl" {% if email.use_ssl %}selected{% endif %}>SSL/TLS (465)</option>
+                                                <option value="none" {% if not email.starttls and not email.use_ssl %}selected{% endif %}>None</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="email_username" class="form-label">SMTP username</label>
+                                        <input type="text" class="form-control" id="email_username" name="email_username"
+                                               value="{{ email.username|e }}" placeholder="user@example.com" autocomplete="off">
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="email_password" class="form-label">SMTP password</label>
+                                        <input type="password" class="form-control" id="email_password" name="email_password"
+                                               value="" autocomplete="new-password"
+                                               placeholder="{% if email_password_from_env %}Using %{{ email.password_env|e }}%{% elif email_password_set %}•••••••• (saved, leave blank to keep){% else %}Not set{% endif %}">
+                                        <div class="form-check mt-1">
+                                            <input type="checkbox" class="form-check-input" id="email_password_clear" name="email_password_clear">
+                                            <label class="form-check-label" for="email_password_clear">Clear saved password</label>
+                                        </div>
+                                        <div class="form-text">
+                                            For Gmail use an app password. Leave blank to keep the saved one, or leave it out of
+                                            rules.yaml and set the <code>{{ email.password_env|e }}</code> environment variable.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="email_from" class="form-label">From address</label>
+                                        <input type="text" class="form-control" id="email_from" name="email_from"
+                                               value="{{ email.from_address|e }}" placeholder="user@example.com">
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="email_to" class="form-label">Send to</label>
+                                        <input type="text" class="form-control" id="email_to" name="email_to"
+                                               value="{{ email.to|join(', ')|e }}" placeholder="user@example.com, other@example.com">
+                                        <div class="form-text">Comma-separated list</div>
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-6 mb-3">
+                                            <label for="email_failure_threshold" class="form-label">Failed runs before alert</label>
+                                            <input type="number" class="form-control" id="email_failure_threshold" name="email_failure_threshold"
+                                                   value="{{ email.failure_threshold }}" min="1">
+                                        </div>
+                                        <div class="col-6 mb-3">
+                                            <label for="email_cooldown_hours" class="form-label">Cooldown (hours)</label>
+                                            <input type="number" class="form-control" id="email_cooldown_hours" name="email_cooldown_hours"
+                                                   value="{{ email.cooldown_hours }}" min="0" step="0.5">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3 form-check">
+                                        <input type="checkbox" class="form-check-input" id="email_send_recovery" name="email_send_recovery"
+                                               {% if email.send_recovery %}checked{% endif %}>
+                                        <label class="form-check-label" for="email_send_recovery">Email when cleanup recovers</label>
+                                    </div>
+
+                                    <p class="text-muted small mb-2">
+                                        Current streak: {{ email_state.get('consecutive_failures', 0) or 0 }} failed run(s){% if email_state.get('last_alert_at') %} · last alert {{ email_state.get('last_alert_at') }}{% endif %}
+                                    </p>
+
+                                    <button type="button" class="btn btn-outline-primary" id="testEmailBtn" onclick="sendTestEmail()">
+                                        <i class="fas fa-paper-plane"></i> Send test email
+                                    </button>
+                                    <div class="form-text">Uses the values on this page, saved or not.</div>
+                                    <div id="testEmailResult" class="mt-2"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
                 <div class="col-md-6">
                     <div class="card mb-4">
                         <div class="card-header">
@@ -131,6 +243,26 @@
 
 {% block scripts %}
 <script>
+function sendTestEmail() {
+    const btn = document.getElementById('testEmailBtn');
+    const out = document.getElementById('testEmailResult');
+    const data = new FormData(document.getElementById('settingsForm'));
+    btn.disabled = true;
+    out.className = 'mt-2 text-muted';
+    out.textContent = 'Sending...';
+    fetch('/api/notifications/test-email', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(res => {
+            out.className = 'mt-2 ' + (res.status === 'success' ? 'text-success' : 'text-danger');
+            out.textContent = res.message;
+        })
+        .catch(err => {
+            out.className = 'mt-2 text-danger';
+            out.textContent = 'Test email failed: ' + err.message;
+        })
+        .finally(() => { btn.disabled = false; });
+}
+
 function testConnection() {
     const url = document.getElementById('qb_url').value;
     const username = document.getElementById('qb_username').value;
