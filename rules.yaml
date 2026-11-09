@@ -2,7 +2,6 @@
 
 qbittorrent:
   # url: "http://127.0.0.1:8080"
-  url: "http://qbittorrent-host:8113"
   # username: "admin"
   # password: "adminadmin"
 
