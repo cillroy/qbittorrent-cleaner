@@ -37,6 +37,7 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 - Optional debug: `python tray.py debug` → `logs/tray/tray-debug.log`
 - If the icon appears then vanishes: `logs/tray/tray-crash.log`
 - Auto-start via Scheduled Task (`QBCleanerTray.xml`)
+- Starts the web UI at tray launch by default (`web.auto_start: false` disables it)
 
 ### Web UI
 - **Dashboard** — service, qBittorrent, next cleanup, deletion counts
@@ -176,6 +177,10 @@ Tray → **Web → Restart** bounces `web.py`. **Check for updates** compares `V
 2. Point the action at `pythonw.exe`, `tray.py`, and the install folder
 3. Run only when the user is logged on, **highest privileges**, your Windows user (not Administrator)
 
+When the tray launches, it starts the web UI automatically unless `web.auto_start` is `false`. The default is `true`, including for existing configs without the key. This happens at **user sign-in**, not at Windows service startup; the tray must be running. A running web UI or occupied port is left alone, and a startup failure does not close the tray. Startup results are recorded as `Web auto-start:` in `logs/actions/qb-cleaner.log`.
+
+After changing `web.auto_start`, restart the tray to apply it. Manual **Web > Start/Stop/Restart** remains available; setting `false` does not stop a web UI that is already running.
+
 ---
 
 # Configuration (`rules.yaml`)
@@ -199,6 +204,7 @@ schedule:
   interval_seconds: 30       # 15–60 minutes is plenty for a 40-day rule
 
 web:
+  auto_start: true           # start the web UI when the tray launches (default)
   port: 8002
   username: "admin"
   password: "change-me"
@@ -307,7 +313,7 @@ The rules form also lists `ratio_lt`, `size_*`, `tracker_contains`, and `progres
 python web.py
 ```
 
-Or tray → **Web → Start**, then **Open web interface**.
+The tray starts the web UI automatically by default. To start it manually, use tray → **Web → Start**, then **Open web interface**.
 
 URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 

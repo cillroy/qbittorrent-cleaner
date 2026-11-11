@@ -15,6 +15,7 @@ schedule:
   interval_seconds: 30  # how often the Windows service runs all rules
 
 web:
+  auto_start: true  # start the web UI when the tray launches (default: true)
   port: 8002
   username: "admin"
   password: "change-me"

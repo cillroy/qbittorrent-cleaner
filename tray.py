@@ -253,6 +253,7 @@ def noop(_icon=None, _item=None):
 # -------------------------
 
 web_process = None  # Global variable to track web server process
+_web_start_lock = threading.Lock()
 
 def get_web_status():
     port = get_web_port()
@@ -296,7 +297,25 @@ def start_web_server(icon, item):
     return _start_web(icon, quiet=False)
 
 
+def _web_port_available(port):
+    """Do not launch a second server over an occupied (even non-listening) port."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            sock.bind(("0.0.0.0", port))
+        return True
+    except OSError:
+        return False
+
+
 def _start_web(icon, quiet=False):
+    # Serialize automatic and menu starts so both cannot spawn a web child.
+    with _web_start_lock:
+        return _start_web_locked(icon, quiet=quiet)
+
+
+def _start_web_locked(icon, quiet=False):
     global web_process
     logging.debug("start_web_server() called")
 
@@ -308,6 +327,13 @@ def _start_web(icon, quiet=False):
         if not quiet:
             notify_now(icon, f"Web already running on :{get_web_port()}")
         return True
+
+    port = get_web_port()
+    if not _web_port_available(port):
+        action_file_logger.warning("Web server start skipped: port %s is in use", port)
+        if not quiet:
+            notify_now(icon, f"Web not started: port {port} is in use")
+        return False
 
     try:
         logging.debug(f"Starting web server subprocess with: {sys.executable} web.py")
@@ -329,6 +355,7 @@ def _start_web(icon, quiet=False):
 
         if final_status == "Running":
             logging.debug("Web server start successful")
+            action_file_logger.info("Web server started on port %s (PID %s)", port, web_process.pid)
             if not quiet:
                 notify_now(icon, f"Web started — running on :{get_web_port()}")
             return True
@@ -342,6 +369,27 @@ def _start_web(icon, quiet=False):
         if not quiet:
             notify_now(icon, f"Failed to start web server: {str(e)}")
         return False
+
+
+def auto_start_web(icon):
+    """Best-effort startup at tray launch; failures must not stop the tray."""
+    try:
+        web_config = load_config().get("web") or {}
+        if not web_config.get("auto_start", True):
+            action_file_logger.info("Web auto-start: disabled by web.auto_start")
+            return
+        port = get_web_port()
+        if get_web_status() == "Running":
+            action_file_logger.info("Web auto-start: skipped; port %s is already in use", port)
+            return
+        action_file_logger.info("Web auto-start: starting on port %s", port)
+        if _start_web(icon, quiet=True):
+            action_file_logger.info("Web auto-start: ready on port %s", port)
+        else:
+            action_file_logger.warning("Web auto-start: failed on port %s; tray remains running", port)
+    except Exception:
+        action_file_logger.exception("Web auto-start: failed; tray remains running")
+
 
 def stop_web_server(icon, item):
     return _stop_web(icon, quiet=False)
@@ -741,6 +789,12 @@ def on_icon_ready(icon):
     except Exception:
         _log_crash("on_icon_ready failed")
         raise
+    try:
+        threading.Thread(
+            target=auto_start_web, args=(icon,), daemon=True, name="qbc-web-auto-start"
+        ).start()
+    except Exception:
+        action_file_logger.exception("Web auto-start: could not start worker; tray remains running")
 
 
 if __name__ == "__main__":
