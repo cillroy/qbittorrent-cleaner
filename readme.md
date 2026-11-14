@@ -40,7 +40,7 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 - Starts the web UI at tray launch by default (`web.auto_start: false` disables it)
 
 ### Web UI
-- **Dashboard** — service, qBittorrent, next cleanup, deletion counts
+- **Dashboard** — service, qBittorrent (re-reads `rules.yaml` on each check; **Check now** refreshes status without a full page reload), next cleanup, deletion counts
 - **Rules** — add / edit / delete
 - **Scheduler** — next run countdown, last run, interval, pause, run now
 - **Logs** — **Actions** vs **Schedule** tabs
@@ -340,6 +340,7 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | `install.cmd` / `update.cmd` / `start-tray.cmd` close after UAC | Old launchers (path with spaces) | Copy the current `.cmd` files and run again; leave the elevated window open |
 | `.\install.ps1` blocked | Execution policy | Use `update.cmd` / `install.cmd` |
 | Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |
+| Dashboard qBittorrent status is stale or a 403 after changing `rules.yaml` | Web UI used to cache the qBittorrent URL at startup (fixed in 1.0.11) | Click **Check now**, or restart the web UI |
 | Cleanup not happening | Rule mismatch, or schedule paused | Scheduler page + action log |
 | Notifications show old color | Stale tray | Quit tray, run `start-tray.cmd` |
 | No alert email | Alerts disabled, threshold not reached, or SMTP error | **Settings → Send test email**; look for `Email alert:` lines in the action log |

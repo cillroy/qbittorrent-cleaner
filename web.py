@@ -68,10 +68,8 @@ WEB_USERNAME = web_config.get("username", "admin")
 WEB_PASSWORD = web_config.get("password", "admin")
 ENABLE_AUTH = web_config.get("enable_auth", True)
 
-qb_config = config["qbittorrent"]
-QB_URL = qb_config["url"]
-QB_USERNAME = qb_config.get("username")
-QB_PASSWORD = qb_config.get("password")
+# qBittorrent URL/credentials are read from rules.yaml on each status check
+# (see get_qb_client_settings). Do not cache them at import time.
 
 SERVICE_NAME = "QBCleanerService"
 
@@ -164,9 +162,22 @@ def get_service_status():
     except:
         return "Unknown"
 
+def get_qb_client_settings():
+    """Load qBittorrent connection settings from rules.yaml on each call."""
+    qb = (load_config().get("qbittorrent") or {})
+    return qb.get("url"), qb.get("username"), qb.get("password")
+
+
 def get_qb_status():
     try:
-        client = QBClient(QB_URL, QB_USERNAME, QB_PASSWORD)
+        url, username, password = get_qb_client_settings()
+        if not url:
+            return {
+                "status": "Error: qBittorrent URL is not set in rules.yaml",
+                "torrent_count": 0,
+                "torrents": []
+            }
+        client = QBClient(url, username, password)
         torrents = client.get_torrents()
         return {
             "status": "Connected",
@@ -475,6 +486,15 @@ def schedule_page(request: Request, saved: int = 0, auth=Depends(authenticate)):
     template = jinja_env.get_template("schedule.html")
     html_content = template.render(schedule=status, saved=bool(saved))
     return HTMLResponse(content=html_content)
+
+
+@app.get("/api/qb-status")
+def qb_status_api(auth=Depends(authenticate)):
+    status = get_qb_status()
+    return {
+        "status": status["status"],
+        "torrent_count": status["torrent_count"],
+    }
 
 
 @app.get("/api/schedule")

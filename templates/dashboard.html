@@ -29,8 +29,12 @@
                 </div>
                 <div class="card-body">
                     <p><strong>Service Status:</strong> {{ service_status }}</p>
-                    <p><strong>qBittorrent Status:</strong> {{ qb_status.status }}</p>
-                    <p><strong>Total Torrents:</strong> {{ qb_status.torrent_count }}</p>
+                    <p>
+                        <strong>qBittorrent Status:</strong>
+                        <span id="qb-status">{{ qb_status.status }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="qb-check-now" onclick="checkQbStatus()">Check now</button>
+                    </p>
+                    <p><strong>Total Torrents:</strong> <span id="qb-torrent-count">{{ qb_status.torrent_count }}</span></p>
                 </div>
             </div>
         </div>
@@ -82,6 +86,34 @@ function installGithubUpdate() {
         .then(r => r.json())
         .then(data => alert(data.message || data.status))
         .catch(err => alert('Could not start updater: ' + err));
+}
+
+function checkQbStatus() {
+    const button = document.getElementById('qb-check-now');
+    const statusEl = document.getElementById('qb-status');
+    const countEl = document.getElementById('qb-torrent-count');
+    if (!button || !statusEl || !countEl) return;
+
+    const previous = statusEl.textContent;
+    button.disabled = true;
+    statusEl.textContent = 'Checking…';
+
+    fetch('/api/qb-status')
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(data => {
+            statusEl.textContent = data.status;
+            countEl.textContent = data.torrent_count;
+        })
+        .catch(err => {
+            statusEl.textContent = previous;
+            alert('Could not check qBittorrent status: ' + err);
+        })
+        .finally(() => {
+            button.disabled = false;
+        });
 }
 </script>
 {% endblock %}
