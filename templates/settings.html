@@ -70,6 +70,18 @@
                                     Enable Authentication
                                 </label>
                             </div>
+
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="web_auto_start" name="web_auto_start"
+                                       {% if web_auto_start %}checked{% endif %}>
+                                <label class="form-check-label" for="web_auto_start">
+                                    Start web UI automatically
+                                </label>
+                                <div class="form-text">
+                                    Start the web UI when the tray launches (<code>web.auto_start</code>, default on).
+                                    Restart the tray after changing this. Saving this page updates only changed keys and keeps comments in <code>rules.yaml</code>.
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

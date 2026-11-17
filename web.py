@@ -13,7 +13,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import secrets
 from datetime import datetime
 import win32serviceutil
-from cleaner import Cleaner, rule_match_problems, load_cleanup_settings
+from cleaner import (
+    Cleaner,
+    rule_match_problems,
+    load_cleanup_settings,
+    preview_rule,
+    hours_since_now,
+)
+from yamlutil import apply_yaml_updates
 from qb_api import QBClient
 from schedule import (
     get_schedule_status,
@@ -479,6 +486,54 @@ def edit_rule(
 
     return RedirectResponse(url="/rules", status_code=303)
 
+@app.post("/api/rules/test")
+async def api_rules_test(request: Request, auth=Depends(authenticate)):
+    """Dry-run an unsaved rule against live torrents. Never deletes."""
+    form = await request.form()
+    try:
+        import json
+        match_criteria = json.loads(form.get("match_json") or "{}")
+    except Exception:
+        match_criteria = {}
+    rule = _rule_from_form(
+        form.get("name") or "",
+        match_criteria,
+        form.get("delete_torrent") == "on",
+        form.get("delete_files") == "on",
+        form.get("include_incomplete") == "on",
+        True,
+    )
+    url, username, password = get_qb_client_settings()
+    if not url:
+        return {
+            "status": "error",
+            "message": "qBittorrent URL is not set in rules.yaml",
+            "would_delete_count": 0,
+        }
+    try:
+        client = QBClient(url, username, password)
+        torrents = client.get_torrents()
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Could not read torrents from qBittorrent: {e}",
+            "would_delete_count": 0,
+        }
+    result = preview_rule(
+        rule,
+        torrents,
+        hours_since_now,
+        load_cleanup_settings(load_config()),
+        force_dry_run=True,
+    )
+    logger.info(
+        "Test run of rule %s: %s would be deleted",
+        result.get("rule_name") or "(unnamed rule)",
+        result.get("would_delete_count", 0),
+    )
+    result["status"] = "invalid" if result.get("problems") else "ok"
+    return result
+
 @app.post("/cleanup")
 def run_cleanup(auth=Depends(authenticate)):
     try:
@@ -638,6 +693,7 @@ def settings_page(request: Request, auth=Depends(authenticate)):
         email_password_set=bool(email_cfg.get("password")),
         email_password_from_env=bool(email_cfg.get("password")) and not email_cfg.get("password_saved"),
         email_state=load_alert_state(),
+        web_auto_start=(current.get("web") or {}).get("auto_start", True),
     )
     return HTMLResponse(content=html_content)
 
@@ -720,46 +776,52 @@ async def update_settings(
 ):
     current = load_config()
 
-    current.setdefault("qbittorrent", {})
-    current["qbittorrent"]["url"] = qb_url
-    if qb_username:
-        current["qbittorrent"]["username"] = qb_username
-    if qb_password:
-        current["qbittorrent"]["password"] = qb_password
-
-    current.setdefault("web", {})
-    current["web"]["port"] = web_port
-    current["web"]["username"] = web_username
-    current["web"]["password"] = web_password
-    current["web"]["enable_auth"] = enable_auth
-
-    current.setdefault("logging", {})
-    current["logging"]["max_days"] = max_days
-    current["logging"]["enable_notifications"] = enable_notifications
-
     form = await request.form()
+    updates = [
+        (["qbittorrent", "url"], qb_url),
+        (["web", "port"], int(web_port)),
+        (["web", "username"], web_username),
+        (["web", "password"], web_password),
+        (["web", "enable_auth"], form.get("enable_auth") == "on"),
+        (["web", "auto_start"], form.get("web_auto_start") == "on"),
+        (["logging", "max_days"], int(max_days)),
+        (["logging", "enable_notifications"], form.get("enable_notifications") == "on"),
+    ]
+    if qb_username:
+        updates.append((["qbittorrent", "username"], qb_username))
+    if qb_password:
+        updates.append((["qbittorrent", "password"], qb_password))
+
     if "email_smtp_host" in form:
-        current.setdefault("notifications", {})
-        if not isinstance(current["notifications"], dict):
-            current["notifications"] = {}
-        current["notifications"]["email"] = _email_block_from_form(
-            current["notifications"].get("email"), form
+        block = _email_block_from_form(
+            ((current.get("notifications") or {}).get("email")) or {}, form
         )
+        email_root = ["notifications", "email"]
+        for key in (
+            "enabled", "smtp_host", "smtp_port", "starttls", "use_ssl",
+            "username", "password", "from_address", "to",
+            "failure_threshold", "cooldown_hours", "send_recovery",
+            "password_env",
+        ):
+            if key in block:
+                updates.append((email_root + [key], block[key]))
 
     if "max_deletes_per_run" in form:
-        current.setdefault("cleanup", {})
-        if not isinstance(current["cleanup"], dict):
-            current["cleanup"] = {}
         try:
             cap = int(form.get("max_deletes_per_run") or 20)
         except (TypeError, ValueError):
             cap = 20
         if cap < 0:
             cap = 20
-        current["cleanup"]["max_deletes_per_run"] = cap
-        current["cleanup"]["dry_run"] = form.get("cleanup_dry_run") == "on"
+        updates.append((["cleanup", "max_deletes_per_run"], cap))
+        updates.append((["cleanup", "dry_run"], form.get("cleanup_dry_run") == "on"))
 
-    save_config(current)
+    with open(RULES_PATH, "r", encoding="utf-8") as f:
+        original = f.read()
+    updated, _changed = apply_yaml_updates(original, updates)
+    if updated != original:
+        with open(RULES_PATH, "w", encoding="utf-8") as f:
+            f.write(updated)
 
     return RedirectResponse(url="/settings", status_code=303)
 

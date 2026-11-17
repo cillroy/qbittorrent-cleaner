@@ -53,10 +53,10 @@
             <div class="card-body">
                 <ul class="mb-0">
                     <li><a href="/">Dashboard</a> — service, qBittorrent, next cleanup, deletion counts</li>
-                    <li><a href="/rules">Rules</a> — add as many rules as you want; all run on the same schedule</li>
+                    <li><a href="/rules">Rules</a> — add as many rules as you want; all run on the same schedule. <strong>Test this rule</strong> dry-runs the unsaved form against live torrents and never deletes</li>
                     <li><a href="/schedule">Scheduler</a> — interval, next/last run, pause, run now</li>
                     <li><a href="/logs">Logs</a> — Actions (deletes/errors) vs Schedule (every pass)</li>
-                    <li><a href="/settings">Settings</a> — qBittorrent URL, web login, log retention</li>
+                    <li><a href="/settings">Settings</a> — qBittorrent URL, web login, log retention, and <strong>Start web UI automatically</strong> (<code>web.auto_start</code>, default on)</li>
                 </ul>
             </div>
         </div>
@@ -76,7 +76,7 @@
                 </ul>
                 <p>Each rule must include at least one time condition (<code>last_activity_hours_*</code> or <code>added_on_hours_*</code>). If a rule has an unknown condition, an empty match block, or no time condition, it is skipped entirely, logged once per run, and shown as an error on the Rules page (and as a warning on the Dashboard).</p>
                 <p>By default only completed torrents (<code>progress &gt;= 1.0</code>) are considered. Tag a torrent <code>keep</code> in qBittorrent (any case, comma-separated tags) to protect it from every rule.</p>
-                <p class="mb-0">Test mode (<code>dry_run</code> on a rule, or global test mode in Settings) logs <code>Would delete</code> and does not remove anything. A per-run delete cap (default 20) stops further deletions that run and can send an email alert.</p>
+                <p class="mb-0"><strong>Test this rule</strong> in the add/edit form dry-runs the current (unsaved) conditions against live torrents, shows what would be deleted or skipped (keep tag, incomplete, or the delete cap), and logs a summary. It never deletes. Test mode (<code>dry_run</code> on a rule, or global test mode in Settings) logs <code>Would delete</code> and does not remove anything. A per-run delete cap (default 20) stops further deletions that run and can send an email alert.</p>
             </div>
         </div>
 

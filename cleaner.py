@@ -202,13 +202,23 @@ def torrent_is_complete(torrent):
     return _as_float((torrent or {}).get("progress", 0), 0.0) >= 1.0
 
 
-def match_torrent(torrent, rule, hours_since):
-    """Return True if a valid rule's every condition matches this torrent."""
-    if rule_match_problems(rule):
-        return False
-    if not torrent_is_complete(torrent) and not rule_has_include_incomplete(rule):
-        return False
+def hours_since_now(unix_timestamp, now=None):
+    now = now or datetime.now()
+    try:
+        ts = int(unix_timestamp)
+    except (TypeError, ValueError):
+        ts = 0
+    if ts <= 0:
+        return 0.0
+    return (now - datetime.fromtimestamp(ts)).total_seconds() / 3600.0
 
+
+
+def match_conditions(torrent, rule, hours_since):
+    """True if every comparison in the match block passes.
+
+    Does not check rule validity, completeness, or the keep tag.
+    """
     match = rule.get("match") or {}
     for key, value in match.items():
         if key in BOOLEAN_MATCH_KEYS:
@@ -239,6 +249,102 @@ def match_torrent(torrent, rule, hours_since):
         if not OPERATOR_FUNCS[op](actual, float(value)):
             return False
     return True
+
+
+def match_torrent(torrent, rule, hours_since):
+    """Return True if a valid rule's every condition matches this torrent."""
+    if rule_match_problems(rule):
+        return False
+    if not torrent_is_complete(torrent) and not rule_has_include_incomplete(rule):
+        return False
+    return match_conditions(torrent, rule, hours_since)
+
+
+def format_hours(hours):
+    try:
+        hours = float(hours)
+    except (TypeError, ValueError):
+        return ""
+    if hours >= 24:
+        return "%.1f days" % (hours / 24.0)
+    return "%.1f hours" % hours
+
+
+def torrent_preview_fields(torrent, hours_since):
+    last_hours = _field_last_activity_hours(torrent, hours_since)
+    added_hours = _field_added_on_hours(torrent, hours_since)
+    tags = (torrent or {}).get("tags") or ""
+    if isinstance(tags, (list, tuple, set)):
+        tags = ", ".join(str(part) for part in tags)
+    return {
+        "name": (torrent or {}).get("name") or "",
+        "category": (torrent or {}).get("category") or "",
+        "ratio": _as_float((torrent or {}).get("ratio"), 0.0),
+        "last_activity_hours": last_hours,
+        "last_activity_age": format_hours(last_hours),
+        "added_on_hours": added_hours,
+        "added_on_age": format_hours(added_hours),
+        "state": (torrent or {}).get("state") or "",
+        "progress": _as_float((torrent or {}).get("progress"), 0.0),
+        "tags": str(tags),
+    }
+
+
+def preview_rule(rule, torrents, hours_since, settings=None, force_dry_run=True):
+    """Dry-run a single rule against torrents. Never deletes anything.
+
+    force_dry_run is accepted and always honored: this function has no
+    delete path. settings is a cleanup-settings dict or a full config.
+    """
+    if settings is None:
+        cleanup = load_cleanup_settings({})
+    elif isinstance(settings, dict) and "max_deletes_per_run" in settings:
+        cleanup = settings
+    else:
+        cleanup = load_cleanup_settings(settings)
+    cap = cleanup.get("max_deletes_per_run", DEFAULT_MAX_DELETES_PER_RUN)
+    problems = rule_match_problems(rule)
+    name = (rule or {}).get("name") if isinstance(rule, dict) else None
+    name = name or "(unnamed rule)"
+    delete_torrent = bool(((rule or {}).get("action") or {}).get("delete_torrent"))
+    result = {
+        "rule_name": name,
+        "dry_run": True,
+        "problems": problems,
+        "would_delete": [],
+        "skipped": [],
+        "would_delete_count": 0,
+        "skipped_counts": {"keep": 0, "incomplete": 0, "cap": 0},
+        "delete_cap": cap,
+        "delete_torrent": delete_torrent,
+    }
+    if problems or not isinstance(torrents, list):
+        return result
+
+    for torrent in torrents:
+        if not match_conditions(torrent, rule, hours_since):
+            continue
+        row = torrent_preview_fields(torrent, hours_since)
+        if torrent_has_keep_tag(torrent):
+            row["reason"] = "keep tag"
+            result["skipped"].append(row)
+            result["skipped_counts"]["keep"] += 1
+            continue
+        if not torrent_is_complete(torrent) and not rule_has_include_incomplete(rule):
+            row["reason"] = "incomplete"
+            result["skipped"].append(row)
+            result["skipped_counts"]["incomplete"] += 1
+            continue
+        if not delete_torrent:
+            continue
+        if result["would_delete_count"] >= cap:
+            row["reason"] = "cap"
+            result["skipped"].append(row)
+            result["skipped_counts"]["cap"] += 1
+            continue
+        result["would_delete"].append(row)
+        result["would_delete_count"] += 1
+    return result
 
 
 class Cleaner:

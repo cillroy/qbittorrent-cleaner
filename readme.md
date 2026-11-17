@@ -41,10 +41,10 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 
 ### Web UI
 - **Dashboard** — service, qBittorrent (re-reads `rules.yaml` on each check; **Check now** refreshes status without a full page reload), next cleanup, deletion counts
-- **Rules** — add / edit / delete
+- **Rules** — add / edit / delete; **Test this rule** dry-runs the unsaved form against live torrents (never deletes)
 - **Scheduler** — next run countdown, last run, interval, pause, run now
 - **Logs** — **Actions** vs **Schedule** tabs
-- **Settings** — qBittorrent, web, logging, email alerts (with **Send test email**)
+- **Settings** — qBittorrent, web, logging, email alerts (with **Send test email**), and **Start web UI automatically** (`web.auto_start`, default on)
 - **Help** — short in-app guide, support contacts, GitHub
 - HTTP basic auth (optional)
 
@@ -177,7 +177,7 @@ Tray → **Web → Restart** bounces `web.py`. **Check for updates** compares `V
 2. Point the action at `pythonw.exe`, `tray.py`, and the install folder
 3. Run only when the user is logged on, **highest privileges**, your Windows user (not Administrator)
 
-When the tray launches, it starts the web UI automatically unless `web.auto_start` is `false`. The default is `true`, including for existing configs without the key. This happens at **user sign-in**, not at Windows service startup; the tray must be running. A running web UI or occupied port is left alone, and a startup failure does not close the tray. Startup results are recorded as `Web auto-start:` in `logs/actions/qb-cleaner.log`.
+When the tray launches, it starts the web UI automatically unless `web.auto_start` is `false`. The default is `true`, including for existing configs without the key. Toggle it in **Settings → Start web UI automatically** (the Settings save updates only changed keys and keeps comments in `rules.yaml`). This happens at **user sign-in**, not at Windows service startup; the tray must be running. A running web UI or occupied port is left alone, and a startup failure does not close the tray. Startup results are recorded as `Web auto-start:` in `logs/actions/qb-cleaner.log`.
 
 After changing `web.auto_start`, restart the tray to apply it. Manual **Web > Start/Stop/Restart** remains available; setting `false` does not stop a web UI that is already running.
 

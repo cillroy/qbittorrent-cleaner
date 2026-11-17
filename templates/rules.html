@@ -154,8 +154,10 @@
                             </label>
                         </div>
                     </div>
+                    <div id="addRuleTestResult" class="mt-3"></div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" onclick="testRuleFromForm('addRuleForm', 'addRuleTestResult')">Test this rule</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add Rule</button>
                 </div>
@@ -217,8 +219,10 @@
                             </label>
                         </div>
                     </div>
+                    <div id="editRuleTestResult" class="mt-3"></div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" onclick="testRuleFromForm('editRuleForm', 'editRuleTestResult')">Test this rule</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary">Update Rule</button>
                 </div>
@@ -332,6 +336,8 @@ function editRule(index) {
     document.getElementById('editDeleteFiles').checked = !!(rule.action && rule.action.delete_files);
     document.getElementById('editIncludeIncomplete').checked = !!(rule.include_incomplete || (rule.match && rule.match.include_incomplete));
     document.getElementById('editDryRun').checked = !!rule.rule_dry_run;
+    const editResult = document.getElementById('editRuleTestResult');
+    if (editResult) editResult.innerHTML = '';
 
     // Clear existing criteria
     const container = document.getElementById('editMatchCriteria');
@@ -461,5 +467,119 @@ document.getElementById('editRuleForm').addEventListener('submit', function(e) {
         location.reload();
     });
 });
+function collectRulePayload(form) {
+    const formData = new FormData(form);
+    const isEdit = form.id === 'editRuleForm';
+    const keySel = isEdit ? '.edit-match-key' : '.match-key';
+    const valSel = isEdit ? '.edit-match-value' : '.match-value';
+    const keys = form.querySelectorAll(keySel);
+    const vals = form.querySelectorAll(valSel);
+    const matchCriteria = {};
+    keys.forEach((keySelect, index) => {
+        const key = keySelect.value;
+        const value = vals[index] ? vals[index].value : '';
+        if (key && value) {
+            if (key.includes('_in')) {
+                matchCriteria[key] = value.split(',').map(s => s.trim());
+            } else if (key.includes('progress_eq') || key.includes('ratio_') || key.includes('_hours_') || key.includes('size_')) {
+                matchCriteria[key] = parseFloat(value);
+            } else {
+                matchCriteria[key] = value;
+            }
+        }
+    });
+    const payload = new FormData();
+    payload.append('name', formData.get('name') || '');
+    payload.append('match_json', JSON.stringify(matchCriteria));
+    payload.append('delete_torrent', formData.has('delete_torrent') ? 'on' : '');
+    payload.append('delete_files', formData.has('delete_files') ? 'on' : '');
+    payload.append('include_incomplete', formData.has('include_incomplete') ? 'on' : '');
+    payload.append('dry_run', 'on');
+    return payload;
+}
+
+function formatProgress(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return '';
+    return Math.round(n * 1000) / 10 + '%';
+}
+
+function torrentRowHtml(row, reason) {
+    const bits = [
+        '<strong>' + escapeHtml(row.name || '(unnamed)') + '</strong>',
+        row.category ? 'category ' + escapeHtml(row.category) : '',
+        'ratio ' + escapeHtml(String(row.ratio ?? '')),
+        row.last_activity_age ? 'last activity ' + escapeHtml(row.last_activity_age) : '',
+        row.added_on_age ? 'added ' + escapeHtml(row.added_on_age) : '',
+        row.state ? escapeHtml(row.state) : '',
+        'progress ' + escapeHtml(formatProgress(row.progress)),
+        row.tags ? 'tags ' + escapeHtml(row.tags) : ''
+    ].filter(Boolean);
+    const reasonBadge = reason ? ' <span class="badge bg-secondary">' + escapeHtml(reason) + '</span>' : '';
+    return '<li class="mb-1">' + bits.join(' · ') + reasonBadge + '</li>';
+}
+
+function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, function (ch) {
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]);
+    });
+}
+
+function renderRuleTestResult(container, data) {
+    if (!container) return;
+    if (!data || data.status === 'error') {
+        container.innerHTML = '<div class="alert alert-danger py-2">' +
+            escapeHtml((data && data.message) || 'Test failed') + '</div>';
+        return;
+    }
+    let html = '';
+    if (data.problems && data.problems.length) {
+        html += '<div class="alert alert-danger py-2"><strong>This rule is invalid</strong> and would be skipped.';
+        data.problems.forEach(function (p) { html += '<div><code>' + escapeHtml(p) + '</code></div>'; });
+        html += '</div>';
+        container.innerHTML = html;
+        return;
+    }
+    if (data.delete_torrent === false) {
+        html += '<div class="alert alert-warning py-2">Delete Torrent is off, so this rule would not delete anything.</div>';
+    }
+    const count = data.would_delete_count || 0;
+    html += '<div class="alert alert-info py-2"><strong>Test run (dry run):</strong> ' +
+        count + ' torrent' + (count === 1 ? '' : 's') + ' would be deleted.';
+    if (data.delete_cap != null) {
+        html += ' Cap is ' + escapeHtml(String(data.delete_cap)) + ' per run.';
+    }
+    html += '</div>';
+    if (data.would_delete && data.would_delete.length) {
+        html += '<p class="mb-1"><strong>Would delete</strong></p><ul class="small">';
+        data.would_delete.forEach(function (row) { html += torrentRowHtml(row); });
+        html += '</ul>';
+    }
+    if (data.skipped && data.skipped.length) {
+        html += '<p class="mb-1"><strong>Skipped</strong></p><ul class="small">';
+        data.skipped.forEach(function (row) { html += torrentRowHtml(row, row.reason); });
+        html += '</ul>';
+    }
+    container.innerHTML = html;
+}
+
+function testRuleFromForm(formId, resultId) {
+    const form = document.getElementById(formId);
+    const container = document.getElementById(resultId);
+    if (!form || !container) return;
+    container.innerHTML = '<div class="text-muted py-2">Testing against live torrents…</div>';
+    fetch('/api/rules/test', { method: 'POST', body: collectRulePayload(form) })
+        .then(function (r) {
+            return r.json().then(function (data) {
+                if (!r.ok && !data.message) data.message = 'HTTP ' + r.status;
+                data.status = data.status || (r.ok ? 'ok' : 'error');
+                return data;
+            });
+        })
+        .then(function (data) { renderRuleTestResult(container, data); })
+        .catch(function (err) {
+            renderRuleTestResult(container, { status: 'error', message: String(err) });
+        });
+}
 </script>
 {% endblock %}
