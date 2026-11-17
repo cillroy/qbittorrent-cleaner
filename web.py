@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import secrets
 from datetime import datetime
 import win32serviceutil
-from cleaner import Cleaner
+from cleaner import Cleaner, rule_match_problems, load_cleanup_settings
 from qb_api import QBClient
 from schedule import (
     get_schedule_status,
@@ -303,6 +303,73 @@ def save_config(new_config):
         yaml.safe_dump(new_config, f, default_flow_style=False, sort_keys=False)
 
 # -------------------------
+# RULE DISPLAY / VALIDATION
+# -------------------------
+
+def rules_for_display(rules, global_dry_run=False):
+    """Copy rules for the Rules page, with shared validation attached."""
+    displayed = []
+    for rule in rules or []:
+        match = rule.get("match") if isinstance(rule.get("match"), dict) else {}
+        action = rule.get("action") if isinstance(rule.get("action"), dict) else {}
+        problems = rule_match_problems(rule)
+        include_incomplete = bool(
+            rule.get("include_incomplete") or match.get("include_incomplete")
+        )
+        displayed.append({
+            "name": rule.get("name") or "(unnamed rule)",
+            "match": match,
+            "action": action,
+            "include_incomplete": include_incomplete,
+            "dry_run": bool(rule.get("dry_run") or global_dry_run),
+            "rule_dry_run": bool(rule.get("dry_run")),
+            "validation_problems": problems,
+            "is_invalid": bool(problems),
+        })
+    return displayed
+
+
+def invalid_rules_summary(rules):
+    summary = []
+    for rule in rules or []:
+        problems = rule_match_problems(rule)
+        if problems:
+            summary.append({
+                "name": (rule or {}).get("name") or "(unnamed rule)",
+                "problems": problems,
+            })
+    return summary
+
+
+def _form_flag(*values):
+    for value in values:
+        if str(value or "").strip().lower() in ("on", "true", "1", "yes"):
+            return True
+    return False
+
+
+def _rule_from_form(name, match_criteria, delete_torrent, delete_files, include_incomplete, dry_run):
+    if not isinstance(match_criteria, dict):
+        match_criteria = {}
+    else:
+        match_criteria = dict(match_criteria)
+    if match_criteria.pop("include_incomplete", None):
+        include_incomplete = True
+    data = {
+        "name": name,
+        "match": match_criteria,
+        "action": {
+            "delete_torrent": bool(delete_torrent),
+            "delete_files": bool(delete_files),
+        },
+    }
+    if include_incomplete:
+        data["include_incomplete"] = True
+    if dry_run:
+        data["dry_run"] = True
+    return data
+
+# -------------------------
 # ROUTES
 # -------------------------
 
@@ -312,7 +379,10 @@ def dashboard(request: Request, auth=Depends(authenticate)):
     qb_status = get_qb_status()
     recent_logs = get_recent_logs(10)
     deletion_stats = get_deletion_stats()
-    schedule_status = get_schedule_status(load_config(), service_status=service_status)
+    current = load_config()
+    schedule_status = get_schedule_status(current, service_status=service_status)
+    cleanup = load_cleanup_settings(current)
+    invalid_rules = invalid_rules_summary(current.get("rules") or [])
     update = check_for_update()
 
     template = jinja_env.get_template("dashboard.html")
@@ -322,6 +392,8 @@ def dashboard(request: Request, auth=Depends(authenticate)):
         recent_logs=recent_logs,
         deletion_stats=deletion_stats,
         schedule=schedule_status,
+        cleanup=cleanup,
+        invalid_rules=invalid_rules,
         update=update,
         local_client=is_local_client(request),
         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -331,10 +403,12 @@ def dashboard(request: Request, auth=Depends(authenticate)):
 @app.get("/rules", response_class=HTMLResponse)
 def rules_page(request: Request, auth=Depends(authenticate)):
     current = load_config()
+    cleanup = load_cleanup_settings(current)
     template = jinja_env.get_template("rules.html")
     html_content = template.render(
-        rules=current.get("rules", []),
-        qb_config=current.get("qbittorrent", {})
+        rules=rules_for_display(current.get("rules", []), cleanup["dry_run"]),
+        qb_config=current.get("qbittorrent", {}),
+        cleanup=cleanup,
     )
     return HTMLResponse(content=html_content)
 
@@ -344,22 +418,20 @@ def add_rule(
     match_json: str = Form(...),
     delete_torrent: bool = Form(False),
     delete_files: bool = Form(False),
+    include_incomplete: bool = Form(False),
+    dry_run: bool = Form(False),
     auth=Depends(authenticate)
 ):
     try:
         import json
         match_criteria = json.loads(match_json)
-    except:
+    except Exception:
         match_criteria = {}
 
-    new_rule = {
-        "name": name,
-        "match": match_criteria,
-        "action": {
-            "delete_torrent": delete_torrent,
-            "delete_files": delete_files
-        }
-    }
+    new_rule = _rule_from_form(
+        name, match_criteria, delete_torrent, delete_files,
+        include_incomplete, dry_run,
+    )
 
     current = load_config()
     if "rules" not in current:
@@ -384,12 +456,14 @@ def edit_rule(
     match_json: str = Form(...),
     delete_torrent: bool = Form(False),
     delete_files: bool = Form(False),
+    include_incomplete: bool = Form(False),
+    dry_run: bool = Form(False),
     auth=Depends(authenticate)
 ):
     try:
         import json
         match_criteria = json.loads(match_json)
-    except:
+    except Exception:
         match_criteria = {}
 
     current = load_config()
@@ -397,14 +471,10 @@ def edit_rule(
         current["rules"] = []
 
     if 0 <= rule_index < len(current["rules"]):
-        current["rules"][rule_index] = {
-            "name": name,
-            "match": match_criteria,
-            "action": {
-                "delete_torrent": delete_torrent,
-                "delete_files": delete_files
-            }
-        }
+        current["rules"][rule_index] = _rule_from_form(
+            name, match_criteria, delete_torrent, delete_files,
+            include_incomplete, dry_run,
+        )
         save_config(current)
 
     return RedirectResponse(url="/rules", status_code=303)
@@ -563,6 +633,7 @@ def settings_page(request: Request, auth=Depends(authenticate)):
     template = jinja_env.get_template("settings.html")
     html_content = template.render(
         config=current,
+        cleanup=load_cleanup_settings(current),
         email=email_cfg,
         email_password_set=bool(email_cfg.get("password")),
         email_password_from_env=bool(email_cfg.get("password")) and not email_cfg.get("password_saved"),
@@ -674,6 +745,19 @@ async def update_settings(
         current["notifications"]["email"] = _email_block_from_form(
             current["notifications"].get("email"), form
         )
+
+    if "max_deletes_per_run" in form:
+        current.setdefault("cleanup", {})
+        if not isinstance(current["cleanup"], dict):
+            current["cleanup"] = {}
+        try:
+            cap = int(form.get("max_deletes_per_run") or 20)
+        except (TypeError, ValueError):
+            cap = 20
+        if cap < 0:
+            cap = 20
+        current["cleanup"]["max_deletes_per_run"] = cap
+        current["cleanup"]["dry_run"] = form.get("cleanup_dry_run") == "on"
 
     save_config(current)
 

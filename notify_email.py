@@ -345,3 +345,53 @@ def record_cleanup_result(success, error=None, config=None, logger=None, now=Non
             log(f"Email alert: internal error (ignored): {e}")
         except Exception:
             pass
+
+def record_delete_cap_alert(deleted, cap, config=None, logger=None, now=None):
+    """Email when a run hits the per-run delete cap. Respects cooldown. Never raises."""
+    log = logger or (lambda _msg: None)
+    try:
+        cfg = load_email_config(config)
+        now = now or datetime.now()
+        state = load_alert_state()
+        host = socket.gethostname()
+        if not cfg["enabled"]:
+            return
+        last_alert = _parse(state.get("last_cap_alert_at"))
+        cooldown = timedelta(hours=cfg["cooldown_hours"])
+        if last_alert and now - last_alert < cooldown:
+            if not state.get("cap_cooldown_logged"):
+                log(
+                    f"Email alert: delete cap reached ({deleted} of {cap}), but a cap alert was sent "
+                    f"at {state.get('last_cap_alert_at')} (cooldown {cfg['cooldown_hours']} h); not emailing yet"
+                )
+                state["cap_cooldown_logged"] = True
+                save_alert_state(state)
+            return
+        cap_attempt_state = {"last_send_attempt_at": state.get("last_cap_send_attempt_at")}
+        if _recent_attempt(cap_attempt_state, now):
+            return
+        state["last_cap_send_attempt_at"] = _iso(now)
+        try:
+            send_email(
+                cfg,
+                f"[qBittorrent Cleaner] Delete cap reached on {host} ({deleted} of {cap})",
+                (
+                    f"qBittorrent Cleaner on {host} stopped deleting this run after reaching "
+                    f"the per-run delete cap ({deleted} of {cap}).\n\n"
+                    "Remaining matching torrents were left in place. Review the Rules page "
+                    "and logs/actions/qb-cleaner.log.\n\n"
+                    f"You will not get another cap email for {cfg['cooldown_hours']} hour(s).\n"
+                    f"Version: {_app_version()}\n"
+                ),
+            )
+            state["last_cap_alert_at"] = _iso(now)
+            state["cap_cooldown_logged"] = False
+            log(f"Email alert: delete cap email sent ({deleted} of {cap})")
+        except Exception as e:
+            log(f"Email alert: could not send delete cap email: {e}")
+        save_alert_state(state)
+    except Exception as e:
+        try:
+            log(f"Email alert: internal error (ignored): {e}")
+        except Exception:
+            pass

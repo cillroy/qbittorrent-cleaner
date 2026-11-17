@@ -292,18 +292,29 @@ setx /M QB_CLEANER_SMTP_PASSWORD "abcd efgh ijkl mnop"
 
 `rules.yaml` holds credentials. It is git-ignored (the repo ships `rules.example.yaml` with placeholders); updates never overwrite it.
 
-### Match operators the engine actually uses
+### Match operators the engine uses
 
 | Operator | Meaning |
 | --- | --- |
 | `label` / `label_in` | Exact label, or any of a list |
 | `category` / `category_in` | Exact category, or any of a list |
 | `state` | qBittorrent state string |
-| `ratio_gt` | Ratio greater than |
-| `last_activity_hours_gt` / `_gte` | Hours since last activity |
-| `added_on_hours_gt` / `_gte` | Hours since added |
+| `ratio_gt` / `_gte` / `_lt` / `_lte` | Ratio comparison |
+| `last_activity_hours_gt` / `_gte` / `_lt` / `_lte` | Hours since last activity |
+| `added_on_hours_gt` / `_gte` / `_lt` / `_lte` | Hours since added |
+| `include_incomplete` | Also consider incomplete torrents (`progress < 1.0`) |
 
-The rules form also lists `ratio_lt`, `size_*`, `tracker_contains`, and `progress_eq`. Those are **not** applied by the engine yet.
+Every condition in a rule must be true. The first matching rule wins; later rules are not applied to that torrent.
+
+Each rule must include at least one time condition (`last_activity_hours_*` or `added_on_hours_*`). An unknown condition, an empty match block, or a missing time condition makes the **whole rule invalid**: it is skipped (never deletes), logged once per run in the actions log, and shown as an error on the Rules page and a warning on the Dashboard.
+
+### Cleanup safeguards
+
+- **Completed torrents only** by default (`progress >= 1.0`). A rule may opt in with `include_incomplete: true` (also a checkbox in the Rules editor).
+- **Keep tag:** a torrent whose qBittorrent tags include `keep` (case-insensitive; tags are comma-separated) is never deleted by any rule.
+- **`last_activity` of 0 or missing** falls back to `added_on`. If both are missing, the torrent is treated as not idle (never as idle since 1970).
+- **Delete cap:** `cleanup.max_deletes_per_run` in `rules.yaml` (default **20** if absent). When a run would exceed the cap, further deletions stop, it is logged, an email alert is sent (same notifier/email path, cooldown respected), and the Dashboard shows a warning.
+- **Test mode:** set `dry_run: true` on a rule, or `cleanup.dry_run: true` globally. Logs `Would delete: <name> via rule <rule>` and does not delete. Dry-run matches do not count toward the delete cap. Test mode is shown as a badge on the Rules page and can be toggled in the editor.
 
 ---
 
@@ -341,7 +352,8 @@ URL is `http://localhost:<web.port>` from `rules.yaml` (default **8002**).
 | `.\install.ps1` blocked | Execution policy | Use `update.cmd` / `install.cmd` |
 | Service not starting | Bad Web UI URL/credentials | Fix `rules.yaml` |
 | Dashboard qBittorrent status is stale or a 403 after changing `rules.yaml` | Web UI used to cache the qBittorrent URL at startup (fixed in 1.0.11) | Click **Check now**, or restart the web UI |
-| Cleanup not happening | Rule mismatch, or schedule paused | Scheduler page + action log |
+| Cleanup not happening | Rule mismatch, invalid rule, schedule paused, delete cap, test mode, or `keep` tag | Scheduler / Rules / Dashboard + action log |
+| Rule shown as Invalid — skipped | Unknown condition, empty match, or no time condition | Fix the rule on the Rules page |
 | Notifications show old color | Stale tray | Quit tray, run `start-tray.cmd` |
 | No alert email | Alerts disabled, threshold not reached, or SMTP error | **Settings → Send test email**; look for `Email alert:` lines in the action log |
 | Gmail `535` / `Username and Password not accepted` | Normal password used, or app password revoked | Create a new Gmail app password |

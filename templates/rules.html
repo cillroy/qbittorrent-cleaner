@@ -16,9 +16,13 @@
         <div class="row">
             {% for rule in rules %}
             <div class="col-md-6 mb-4">
-                <div class="card">
+                <div class="card{% if rule.is_invalid %} border-danger{% endif %}">
                      <div class="card-header d-flex justify-content-between align-items-center">
-                         <h5 class="mb-0">{{ rule.name }}</h5>
+                         <h5 class="mb-0">{{ rule.name }}
+                             {% if rule.is_invalid %}<span class="badge bg-danger ms-2">Invalid — skipped</span>{% endif %}
+                             {% if rule.dry_run and not rule.is_invalid %}<span class="badge bg-warning text-dark ms-2">Test mode</span>{% endif %}
+                             {% if rule.include_incomplete and not rule.is_invalid %}<span class="badge bg-secondary ms-2">Includes incomplete</span>{% endif %}
+                         </h5>
                          <div>
                              <button class="btn btn-sm btn-outline-primary me-2"
                                      onclick="editRule({{ loop.index0 }})"
@@ -33,6 +37,15 @@
                          </div>
                      </div>
                     <div class="card-body">
+                        {% if rule.is_invalid %}
+                        <div class="alert alert-danger py-2">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            <strong>This rule is skipped</strong> and will never delete torrents.
+                            {% for problem in rule.validation_problems %}
+                            <div><code>{{ problem }}</code></div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                         <h6>Match Criteria:</h6>
                         <ul class="list-unstyled">
                             {% for key, value in rule.match.items() %}
@@ -84,21 +97,23 @@
                                 <label for="match_key_0" class="visually-hidden">Match criteria type</label>
                                 <select class="form-select match-key" id="match_key_0" name="match_key_0">
                                     <option value="">Select criteria...</option>
-                                    <option value="label">Label (exact)</option>
-                                    <option value="label_in">Label (in list)</option>
-                                    <option value="category">Category (exact)</option>
-                                    <option value="category_in">Category (in list)</option>
-                                    <option value="state">State</option>
-                                    <option value="ratio_gt">Ratio greater than</option>
-                                    <option value="ratio_lt">Ratio less than</option>
-                                    <option value="size_gt">Size greater than (bytes)</option>
-                                    <option value="size_lt">Size less than (bytes)</option>
-                                    <option value="last_activity_hours_gt">Last activity > hours</option>
-                                    <option value="last_activity_hours_gte">Last activity >= hours</option>
-                                    <option value="added_on_hours_gt">Added > hours ago</option>
-                                    <option value="added_on_hours_gte">Added >= hours ago</option>
-                                    <option value="tracker_contains">Tracker contains</option>
-                                    <option value="progress_eq">Progress equals (0.0-1.0)</option>
+<option value="label">Label (exact)</option>
+<option value="label_in">Label (in list)</option>
+<option value="category">Category (exact)</option>
+<option value="category_in">Category (in list)</option>
+<option value="state">State</option>
+<option value="ratio_gt">Ratio greater than</option>
+<option value="ratio_gte">Ratio greater than or equal</option>
+<option value="ratio_lt">Ratio less than</option>
+<option value="ratio_lte">Ratio less than or equal</option>
+<option value="last_activity_hours_gt">Last activity &gt; hours</option>
+<option value="last_activity_hours_gte">Last activity &gt;= hours</option>
+<option value="last_activity_hours_lt">Last activity &lt; hours</option>
+<option value="last_activity_hours_lte">Last activity &lt;= hours</option>
+<option value="added_on_hours_gt">Added &gt; hours ago</option>
+<option value="added_on_hours_gte">Added &gt;= hours ago</option>
+<option value="added_on_hours_lt">Added &lt; hours ago</option>
+<option value="added_on_hours_lte">Added &lt;= hours ago</option>
                                 </select>
                                 <input type="text" class="form-control match-value" name="match_value_0" placeholder="Value">
                                 <button class="btn btn-outline-danger" type="button" onclick="removeCriteria(this)" aria-label="Remove criteria">
@@ -123,6 +138,19 @@
                             <input class="form-check-input" type="checkbox" id="deleteFiles" name="delete_files">
                             <label class="form-check-label" for="deleteFiles">
                                 Delete Files
+                            </label>
+                        </div>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="includeIncomplete" name="include_incomplete">
+                            <label class="form-check-label" for="includeIncomplete">
+                                Include incomplete torrents
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="dryRun" name="dry_run">
+                            <label class="form-check-label" for="dryRun">
+                                Test mode (dry run)
                             </label>
                         </div>
                     </div>
@@ -175,6 +203,19 @@
                                 Delete Files
                             </label>
                         </div>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editIncludeIncomplete" name="include_incomplete">
+                            <label class="form-check-label" for="editIncludeIncomplete">
+                                Include incomplete torrents
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="editDryRun" name="dry_run">
+                            <label class="form-check-label" for="editDryRun">
+                                Test mode (dry run)
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -202,21 +243,23 @@ function addCriteria() {
     div.innerHTML = `
         <select class="form-select match-key" name="match_key_${criteriaCount}">
             <option value="">Select criteria...</option>
-            <option value="label">Label (exact)</option>
-            <option value="label_in">Label (in list)</option>
-            <option value="category">Category (exact)</option>
-            <option value="category_in">Category (in list)</option>
-            <option value="state">State</option>
-            <option value="ratio_gt">Ratio greater than</option>
-            <option value="ratio_lt">Ratio less than</option>
-            <option value="size_gt">Size greater than (bytes)</option>
-            <option value="size_lt">Size less than (bytes)</option>
-            <option value="last_activity_hours_gt">Last activity > hours</option>
-            <option value="last_activity_hours_gte">Last activity >= hours</option>
-            <option value="added_on_hours_gt">Added > hours ago</option>
-            <option value="added_on_hours_gte">Added >= hours ago</option>
-            <option value="tracker_contains">Tracker contains</option>
-            <option value="progress_eq">Progress equals (0.0-1.0)</option>
+<option value="label">Label (exact)</option>
+<option value="label_in">Label (in list)</option>
+<option value="category">Category (exact)</option>
+<option value="category_in">Category (in list)</option>
+<option value="state">State</option>
+<option value="ratio_gt">Ratio greater than</option>
+<option value="ratio_gte">Ratio greater than or equal</option>
+<option value="ratio_lt">Ratio less than</option>
+<option value="ratio_lte">Ratio less than or equal</option>
+<option value="last_activity_hours_gt">Last activity &gt; hours</option>
+<option value="last_activity_hours_gte">Last activity &gt;= hours</option>
+<option value="last_activity_hours_lt">Last activity &lt; hours</option>
+<option value="last_activity_hours_lte">Last activity &lt;= hours</option>
+<option value="added_on_hours_gt">Added &gt; hours ago</option>
+<option value="added_on_hours_gte">Added &gt;= hours ago</option>
+<option value="added_on_hours_lt">Added &lt; hours ago</option>
+<option value="added_on_hours_lte">Added &lt;= hours ago</option>
         </select>
         <input type="text" class="form-control match-value" name="match_value_${criteriaCount}" placeholder="Value">
         <button class="btn btn-outline-danger" type="button" onclick="removeCriteria(this)">
@@ -271,6 +314,8 @@ document.getElementById('addRuleForm').addEventListener('submit', function(e) {
     submitData.append('match_json', JSON.stringify(matchCriteria));
     submitData.append('delete_torrent', formData.has('delete_torrent') ? 'on' : '');
     submitData.append('delete_files', formData.has('delete_files') ? 'on' : '');
+    submitData.append('include_incomplete', formData.has('include_incomplete') ? 'on' : '');
+    submitData.append('dry_run', formData.has('dry_run') ? 'on' : '');
 
     fetch('/rules/add', {
         method: 'POST',
@@ -283,8 +328,10 @@ document.getElementById('addRuleForm').addEventListener('submit', function(e) {
 function editRule(index) {
     const rule = rulesData[index];
     document.getElementById('editRuleName').value = rule.name;
-    document.getElementById('editDeleteTorrent').checked = rule.action.delete_torrent;
-    document.getElementById('editDeleteFiles').checked = rule.action.delete_files;
+    document.getElementById('editDeleteTorrent').checked = !!(rule.action && rule.action.delete_torrent);
+    document.getElementById('editDeleteFiles').checked = !!(rule.action && rule.action.delete_files);
+    document.getElementById('editIncludeIncomplete').checked = !!(rule.include_incomplete || (rule.match && rule.match.include_incomplete));
+    document.getElementById('editDryRun').checked = !!rule.rule_dry_run;
 
     // Clear existing criteria
     const container = document.getElementById('editMatchCriteria');
@@ -292,7 +339,8 @@ function editRule(index) {
 
     // Populate criteria
     let editCriteriaCount = 0;
-    for (const [key, value] of Object.entries(rule.match)) {
+    for (const [key, value] of Object.entries(rule.match || {})) {
+        if (key === 'include_incomplete') continue;
         const div = document.createElement('div');
         div.className = 'input-group mb-2';
         let valueStr = value;
@@ -302,21 +350,24 @@ function editRule(index) {
         div.innerHTML = `
             <select class="form-select edit-match-key" name="edit_match_key_${editCriteriaCount}">
                 <option value="">Select criteria...</option>
-                <option value="label" ${key === 'label' ? 'selected' : ''}>Label (exact)</option>
-                <option value="label_in" ${key === 'label_in' ? 'selected' : ''}>Label (in list)</option>
-                <option value="category" ${key === 'category' ? 'selected' : ''}>Category (exact)</option>
-                <option value="category_in" ${key === 'category_in' ? 'selected' : ''}>Category (in list)</option>
-                <option value="state" ${key === 'state' ? 'selected' : ''}>State</option>
-                <option value="ratio_gt" ${key === 'ratio_gt' ? 'selected' : ''}>Ratio greater than</option>
-                <option value="ratio_lt" ${key === 'ratio_lt' ? 'selected' : ''}>Ratio less than</option>
-                <option value="size_gt" ${key === 'size_gt' ? 'selected' : ''}>Size greater than (bytes)</option>
-                <option value="size_lt" ${key === 'size_lt' ? 'selected' : ''}>Size less than (bytes)</option>
-                <option value="last_activity_hours_gt" ${key === 'last_activity_hours_gt' ? 'selected' : ''}>Last activity > hours</option>
-                <option value="last_activity_hours_gte" ${key === 'last_activity_hours_gte' ? 'selected' : ''}>Last activity >= hours</option>
-                <option value="added_on_hours_gt" ${key === 'added_on_hours_gt' ? 'selected' : ''}>Added > hours ago</option>
-                <option value="added_on_hours_gte" ${key === 'added_on_hours_gte' ? 'selected' : ''}>Added >= hours ago</option>
-                <option value="tracker_contains" ${key === 'tracker_contains' ? 'selected' : ''}>Tracker contains</option>
-                <option value="progress_eq" ${key === 'progress_eq' ? 'selected' : ''}>Progress equals (0.0-1.0)</option>
+<option value="label" ${key === 'label' ? 'selected' : ''}>Label (exact)</option>
+<option value="label_in" ${key === 'label_in' ? 'selected' : ''}>Label (in list)</option>
+<option value="category" ${key === 'category' ? 'selected' : ''}>Category (exact)</option>
+<option value="category_in" ${key === 'category_in' ? 'selected' : ''}>Category (in list)</option>
+<option value="state" ${key === 'state' ? 'selected' : ''}>State</option>
+<option value="ratio_gt" ${key === 'ratio_gt' ? 'selected' : ''}>Ratio greater than</option>
+<option value="ratio_gte" ${key === 'ratio_gte' ? 'selected' : ''}>Ratio greater than or equal</option>
+<option value="ratio_lt" ${key === 'ratio_lt' ? 'selected' : ''}>Ratio less than</option>
+<option value="ratio_lte" ${key === 'ratio_lte' ? 'selected' : ''}>Ratio less than or equal</option>
+<option value="last_activity_hours_gt" ${key === 'last_activity_hours_gt' ? 'selected' : ''}>Last activity &gt; hours</option>
+<option value="last_activity_hours_gte" ${key === 'last_activity_hours_gte' ? 'selected' : ''}>Last activity &gt;= hours</option>
+<option value="last_activity_hours_lt" ${key === 'last_activity_hours_lt' ? 'selected' : ''}>Last activity &lt; hours</option>
+<option value="last_activity_hours_lte" ${key === 'last_activity_hours_lte' ? 'selected' : ''}>Last activity &lt;= hours</option>
+<option value="added_on_hours_gt" ${key === 'added_on_hours_gt' ? 'selected' : ''}>Added &gt; hours ago</option>
+<option value="added_on_hours_gte" ${key === 'added_on_hours_gte' ? 'selected' : ''}>Added &gt;= hours ago</option>
+<option value="added_on_hours_lt" ${key === 'added_on_hours_lt' ? 'selected' : ''}>Added &lt; hours ago</option>
+<option value="added_on_hours_lte" ${key === 'added_on_hours_lte' ? 'selected' : ''}>Added &lt;= hours ago</option>
+${!['label', 'label_in', 'category', 'category_in', 'state', 'ratio_gt', 'ratio_gte', 'ratio_lt', 'ratio_lte', 'last_activity_hours_gt', 'last_activity_hours_gte', 'last_activity_hours_lt', 'last_activity_hours_lte', 'added_on_hours_gt', 'added_on_hours_gte', 'added_on_hours_lt', 'added_on_hours_lte'].includes(key) && key ? '<option value="' + key + '" selected>' + key + ' (unsupported)</option>' : ''}
             </select>
             <input type="text" class="form-control edit-match-value" name="edit_match_value_${editCriteriaCount}" value="${valueStr}" placeholder="Value">
             <button class="btn btn-outline-danger" type="button" onclick="removeCriteria(this)">
@@ -343,21 +394,23 @@ function addEditCriteria() {
     div.innerHTML = `
         <select class="form-select edit-match-key" name="edit_match_key_${editCriteriaCount}">
             <option value="">Select criteria...</option>
-            <option value="label">Label (exact)</option>
-            <option value="label_in">Label (in list)</option>
-            <option value="category">Category (exact)</option>
-            <option value="category_in">Category (in list)</option>
-            <option value="state">State</option>
-            <option value="ratio_gt">Ratio greater than</option>
-            <option value="ratio_lt">Ratio less than</option>
-            <option value="size_gt">Size greater than (bytes)</option>
-            <option value="size_lt">Size less than (bytes)</option>
-            <option value="last_activity_hours_gt">Last activity > hours</option>
-            <option value="last_activity_hours_gte">Last activity >= hours</option>
-            <option value="added_on_hours_gt">Added > hours ago</option>
-            <option value="added_on_hours_gte">Added >= hours ago</option>
-            <option value="tracker_contains">Tracker contains</option>
-            <option value="progress_eq">Progress equals (0.0-1.0)</option>
+<option value="label">Label (exact)</option>
+<option value="label_in">Label (in list)</option>
+<option value="category">Category (exact)</option>
+<option value="category_in">Category (in list)</option>
+<option value="state">State</option>
+<option value="ratio_gt">Ratio greater than</option>
+<option value="ratio_gte">Ratio greater than or equal</option>
+<option value="ratio_lt">Ratio less than</option>
+<option value="ratio_lte">Ratio less than or equal</option>
+<option value="last_activity_hours_gt">Last activity &gt; hours</option>
+<option value="last_activity_hours_gte">Last activity &gt;= hours</option>
+<option value="last_activity_hours_lt">Last activity &lt; hours</option>
+<option value="last_activity_hours_lte">Last activity &lt;= hours</option>
+<option value="added_on_hours_gt">Added &gt; hours ago</option>
+<option value="added_on_hours_gte">Added &gt;= hours ago</option>
+<option value="added_on_hours_lt">Added &lt; hours ago</option>
+<option value="added_on_hours_lte">Added &lt;= hours ago</option>
         </select>
         <input type="text" class="form-control edit-match-value" name="edit_match_value_${editCriteriaCount}" placeholder="Value">
         <button class="btn btn-outline-danger" type="button" onclick="removeCriteria(this)">
@@ -398,6 +451,8 @@ document.getElementById('editRuleForm').addEventListener('submit', function(e) {
     submitData.append('match_json', JSON.stringify(matchCriteria));
     submitData.append('delete_torrent', formData.has('delete_torrent') ? 'on' : '');
     submitData.append('delete_files', formData.has('delete_files') ? 'on' : '');
+    submitData.append('include_incomplete', formData.has('include_incomplete') ? 'on' : '');
+    submitData.append('dry_run', formData.has('dry_run') ? 'on' : '');
 
     fetch(`/rules/edit/${ruleIndex}`, {
         method: 'POST',

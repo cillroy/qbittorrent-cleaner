@@ -209,6 +209,38 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5>Cleanup safeguards</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="max_deletes_per_run" class="form-label">Max deletes per run</label>
+                                <input type="number" class="form-control" id="max_deletes_per_run" name="max_deletes_per_run"
+                                       value="{{ cleanup.max_deletes_per_run }}" min="0" required>
+                                <div class="form-text">
+                                    Default is 20 if this setting is missing. When a run would exceed the cap, leftover matches are left in place and an email alert is sent (respecting the alert cooldown).
+                                </div>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="cleanup_dry_run" name="cleanup_dry_run"
+                                       value="on" {% if cleanup.dry_run %}checked{% endif %}>
+                                <label class="form-check-label" for="cleanup_dry_run">
+                                    Global test mode (dry run)
+                                </label>
+                                <div class="form-text">
+                                    Log <code>Would delete</code> and do not remove torrents. Individual rules can also be set to test mode on the Rules page.
+                                </div>
+                            </div>
+                            <p class="text-muted mb-0 small">
+                                Torrents tagged <code>keep</code> (any case) are never deleted.
+                                Every rule needs a time condition (<code>last_activity_hours_*</code> or <code>added_on_hours_*</code>).
+                                Incomplete torrents are skipped unless a rule opts in.
+                            </p>
+                        </div>
+                    </div>
+
                 </div>
 
                 <div class="col-md-6">

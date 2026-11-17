@@ -122,7 +122,8 @@ def apply_interval_change(interval_seconds):
     return state
 
 
-def record_run(source, deleted=0, error=None, scheduled=True, interval_seconds=None):
+def record_run(source, deleted=0, error=None, scheduled=True, interval_seconds=None,
+               capped=False, delete_cap=None, would_delete=0):
     now = datetime.now()
     if interval_seconds is None:
         interval_seconds = load_schedule_config()["interval_seconds"]
@@ -132,6 +133,9 @@ def record_run(source, deleted=0, error=None, scheduled=True, interval_seconds=N
     state["last_run_source"] = source
     state["last_run_deleted"] = int(deleted)
     state["last_run_error"] = error
+    state["last_run_capped"] = bool(capped)
+    state["last_run_delete_cap"] = delete_cap
+    state["last_run_would_delete"] = int(would_delete or 0)
     if scheduled:
         state["last_scheduled_run_at"] = to_iso(now)
         state["next_run_at"] = to_iso(now + timedelta(seconds=interval_seconds))
@@ -199,6 +203,9 @@ def get_schedule_status(config=None, service_status=None):
         "last_run_source_label": SOURCE_LABELS.get(source, source or "—"),
         "last_run_deleted": state.get("last_run_deleted", 0) or 0,
         "last_run_error": state.get("last_run_error"),
+        "last_run_capped": bool(state.get("last_run_capped")),
+        "last_run_delete_cap": state.get("last_run_delete_cap"),
+        "last_run_would_delete": state.get("last_run_would_delete", 0) or 0,
         "last_scheduled_run_at": to_iso(last_scheduled),
         "next_run_at": to_iso(next_run_at),
         "seconds_until_next": seconds_until,

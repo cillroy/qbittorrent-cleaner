@@ -64,19 +64,19 @@
         <div class="card mb-4">
             <div class="card-header"><h5 class="mb-0">Rules that actually match</h5></div>
             <div class="card-body">
-                <p>The add/edit form lists extra operators. Only these are applied by the engine today:</p>
+                <p>Every condition in a rule must be true. A torrent is handled by the first matching rule only.</p>
                 <ul>
                     <li><code>label</code> / <code>label_in</code></li>
                     <li><code>category</code> / <code>category_in</code></li>
                     <li><code>state</code></li>
-                    <li><code>ratio_gt</code></li>
-                    <li><code>last_activity_hours_gt</code> / <code>last_activity_hours_gte</code></li>
-                    <li><code>added_on_hours_gt</code> / <code>added_on_hours_gte</code></li>
+                    <li><code>ratio_gt</code> / <code>ratio_gte</code> / <code>ratio_lt</code> / <code>ratio_lte</code></li>
+                    <li><code>last_activity_hours_gt</code> / <code>_gte</code> / <code>_lt</code> / <code>_lte</code></li>
+                    <li><code>added_on_hours_gt</code> / <code>_gte</code> / <code>_lt</code> / <code>_lte</code></li>
+                    <li><code>include_incomplete</code> — opt in to incomplete torrents (also a checkbox on the rule)</li>
                 </ul>
-                <p class="mb-0 text-muted">
-                    <code>ratio_lt</code>, <code>size_*</code>, <code>tracker_contains</code>, and <code>progress_eq</code>
-                    are shown in the form but are not evaluated yet.
-                </p>
+                <p>Each rule must include at least one time condition (<code>last_activity_hours_*</code> or <code>added_on_hours_*</code>). If a rule has an unknown condition, an empty match block, or no time condition, it is skipped entirely, logged once per run, and shown as an error on the Rules page (and as a warning on the Dashboard).</p>
+                <p>By default only completed torrents (<code>progress &gt;= 1.0</code>) are considered. Tag a torrent <code>keep</code> in qBittorrent (any case, comma-separated tags) to protect it from every rule.</p>
+                <p class="mb-0">Test mode (<code>dry_run</code> on a rule, or global test mode in Settings) logs <code>Would delete</code> and does not remove anything. A per-run delete cap (default 20) stops further deletions that run and can send an email alert.</p>
             </div>
         </div>
 

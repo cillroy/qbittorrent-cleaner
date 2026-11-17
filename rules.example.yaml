@@ -14,6 +14,10 @@ schedule:
   enabled: true
   interval_seconds: 30  # how often the Windows service runs all rules
 
+cleanup:
+  max_deletes_per_run: 20  # stop a run after this many real deletes (default 20)
+  dry_run: false           # if true, log Would delete and do not remove torrents
+
 web:
   auto_start: true  # start the web UI when the tray launches (default: true)
   port: 8002
@@ -43,9 +47,12 @@ rules:
     match:
       category_in: ["radarr", "tv-sonarr"]
       last_activity_hours_gte: 960
+    # include_incomplete: true   # also act on incomplete torrents
+    # dry_run: true              # log Would delete; do not remove
     action:
       delete_torrent: true
       delete_files: true
+    # Torrents tagged 'keep' (any case) are never deleted.
 
   # - name: "Remove completed torrents with ratio > 3"
   #   match:

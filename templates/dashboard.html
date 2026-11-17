@@ -6,6 +6,33 @@
 <div class="container">
     <h1>Dashboard</h1>
 
+    {% if invalid_rules %}
+    <div class="alert alert-danger">
+        <strong>{{ invalid_rules|length }} cleanup rule{{ 's' if invalid_rules|length != 1 else '' }} will be skipped:</strong>
+        they have invalid conditions and will never delete torrents.
+        <ul class="mb-0 mt-2">
+        {% for rule in invalid_rules %}
+            <li><a href="/rules" class="alert-link">{{ rule.name }}</a> — {{ rule.problems|join("; ") }}</li>
+        {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if cleanup and cleanup.dry_run %}
+    <div class="alert alert-warning">
+        <strong>Global test mode is on.</strong> Matching torrents will be logged as
+        <code>Would delete</code> and will not be removed. Turn this off under Settings.
+    </div>
+    {% endif %}
+
+    {% if schedule.last_run_capped %}
+    <div class="alert alert-warning">
+        <strong>Last cleanup run reached the delete cap</strong>
+        ({{ schedule.last_run_deleted }} of {{ schedule.last_run_delete_cap or cleanup.max_deletes_per_run }}).
+        Remaining matching torrents were left in place. The cap is {{ cleanup.max_deletes_per_run }} deletions per run.
+    </div>
+    {% endif %}
+
     {% if update and update.update_available %}
     <div class="alert alert-info">
         <strong>Update available:</strong> {{ update.local }} → {{ update.latest }}.
@@ -47,6 +74,10 @@
                 <div class="card-body">
                     <p><strong>Torrents deleted (last 24h):</strong> {{ deletion_stats.last_24h }}</p>
                     <p><strong>Torrents deleted (last 30 days):</strong> {{ deletion_stats.last_30d }}</p>
+                    <p><strong>Delete cap:</strong> {{ cleanup.max_deletes_per_run }} torrent{{ 's' if cleanup.max_deletes_per_run != 1 else '' }} per run</p>
+                    {% if cleanup.dry_run %}
+                    <p class="mb-0"><span class="badge bg-warning text-dark">Global test mode</span> — no torrents will be deleted</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
