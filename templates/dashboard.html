@@ -84,6 +84,56 @@
     </div>
 
     <div class="row">
+        <div class="col-12">
+            <div class="card mb-4" id="drives-panel">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Local Drives</h5>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="drives-refresh" onclick="refreshDrives()">Refresh</button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Drive</th>
+                                    <th scope="col">Label</th>
+                                    <th scope="col">Free</th>
+                                    <th scope="col">Used</th>
+                                    <th scope="col">Total</th>
+                                    <th scope="col" style="min-width: 140px;">Usage</th>
+                                </tr>
+                            </thead>
+                            <tbody id="drives-tbody">
+                                {% for drive in drives %}
+                                <tr data-letter="{{ drive.letter }}">
+                                    <td><strong>{{ drive.letter }}</strong></td>
+                                    <td>{{ drive.label or "—" }}</td>
+                                    <td>{{ drive.free_human }}</td>
+                                    <td>{{ drive.used_human }}</td>
+                                    <td>{{ drive.total_human }}</td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="progress flex-grow-1" style="height: 8px;">
+                                                <div class="progress-bar {% if drive.percent_used >= 90 %}bg-danger{% elif drive.percent_used >= 80 %}bg-warning{% else %}bg-success{% endif %}" role="progressbar" style="width: {{ drive.percent_used }}%;" aria-valuenow="{{ drive.percent_used }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                            <span class="small text-nowrap">{{ '%.1f'|format(drive.percent_used) }}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr id="drives-empty">
+                                    <td colspan="6" class="text-muted px-3 py-3">No fixed local drives found.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
         <div class="col-md-6">
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -146,5 +196,55 @@ function checkQbStatus() {
             button.disabled = false;
         });
 }
+
+function driveBarClass(percent) {
+    if (percent >= 90) return 'progress-bar bg-danger';
+    if (percent >= 80) return 'progress-bar bg-warning';
+    return 'progress-bar bg-success';
+}
+
+function renderDrives(drives) {
+    const tbody = document.getElementById('drives-tbody');
+    if (!tbody) return;
+    if (!drives || !drives.length) {
+        tbody.innerHTML = '<tr id="drives-empty"><td colspan="6" class="text-muted px-3 py-3">No fixed local drives found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = drives.map(drive => {
+        const label = drive.label ? drive.label : '\u2014';
+        const pct = Number(drive.percent_used || 0);
+        const pctText = pct.toFixed(1);
+        return [
+            '<tr data-letter="' + drive.letter + '">',
+            '<td><strong>' + drive.letter + '</strong></td>',
+            '<td>' + label + '</td>',
+            '<td>' + drive.free_human + '</td>',
+            '<td>' + drive.used_human + '</td>',
+            '<td>' + drive.total_human + '</td>',
+            '<td><div class="d-flex align-items-center gap-2">',
+            '<div class="progress flex-grow-1" style="height: 8px;">',
+            '<div class="' + driveBarClass(pct) + '" role="progressbar" style="width: ' + pctText + '%;" aria-valuenow="' + pctText + '" aria-valuemin="0" aria-valuemax="100"></div>',
+            '</div><span class="small text-nowrap">' + pctText + '%</span></div></td>',
+            '</tr>'
+        ].join('');
+    }).join('');
+}
+
+function refreshDrives() {
+    const button = document.getElementById('drives-refresh');
+    if (button) button.disabled = true;
+    fetch('/api/drives')
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(data => renderDrives(data.drives || []))
+        .catch(err => console.error('Could not refresh drives:', err))
+        .finally(() => {
+            if (button) button.disabled = false;
+        });
+}
+
+setInterval(refreshDrives, 15000);
 </script>
 {% endblock %}

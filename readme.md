@@ -40,7 +40,7 @@ Source: [github.com/cillroy/qbittorrent-cleaner](https://github.com/cillroy/qbit
 - Starts the web UI at tray launch by default (`web.auto_start: false` disables it)
 
 ### Web UI
-- **Dashboard** — service, qBittorrent (re-reads `rules.yaml` on each check; **Check now** refreshes status without a full page reload), next cleanup, deletion counts
+- **Dashboard** — service, qBittorrent (re-reads `rules.yaml` on each check; **Check now** refreshes status without a full page reload), next cleanup, deletion counts, and a **Local Drives** panel (fixed disks: free/used/total, auto-refreshes every 15s)
 - **Rules** — add / edit / delete; **Test this rule** dry-runs the unsaved form against live torrents (never deletes)
 - **Scheduler** — next run countdown, last run, interval, pause, run now
 - **Logs** — **Actions** vs **Schedule** tabs
@@ -67,6 +67,7 @@ qBittorrent Cleaner/
 ├── start-tray.cmd                           # start the tray icon
 ├── qb_api.py                                # qBittorrent Web API
 ├── cleaner.py                               # rule engine
+├── drivesutil.py                            # local fixed-drive free space
 ├── schedule.py                              # interval + last/next run state
 ├── logutil.py                               # action vs schedule loggers
 ├── notify_email.py                          # optional SMTP failure alerts

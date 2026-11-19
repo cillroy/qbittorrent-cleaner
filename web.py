@@ -32,6 +32,7 @@ from schedule import (
 from logutil import setup_logging, ACTION_LOG, SCHEDULE_LOG
 from paths import LOGS_DIR, ACTIONS_LOG_DIR, migrate_legacy_files
 from version import read_local_version
+from drivesutil import get_local_drives
 from update_check import check_for_update
 from notify_email import (
     load_email_config,
@@ -386,6 +387,7 @@ def dashboard(request: Request, auth=Depends(authenticate)):
     qb_status = get_qb_status()
     recent_logs = get_recent_logs(10)
     deletion_stats = get_deletion_stats()
+    drives = get_local_drives()
     current = load_config()
     schedule_status = get_schedule_status(current, service_status=service_status)
     cleanup = load_cleanup_settings(current)
@@ -398,6 +400,7 @@ def dashboard(request: Request, auth=Depends(authenticate)):
         qb_status=qb_status,
         recent_logs=recent_logs,
         deletion_stats=deletion_stats,
+        drives=drives,
         schedule=schedule_status,
         cleanup=cleanup,
         invalid_rules=invalid_rules,
@@ -611,6 +614,12 @@ def schedule_page(request: Request, saved: int = 0, auth=Depends(authenticate)):
     template = jinja_env.get_template("schedule.html")
     html_content = template.render(schedule=status, saved=bool(saved))
     return HTMLResponse(content=html_content)
+
+
+
+@app.get("/api/drives")
+def drives_api(auth=Depends(authenticate)):
+    return {"drives": get_local_drives()}
 
 
 @app.get("/api/qb-status")
